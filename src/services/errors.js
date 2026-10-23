@@ -19,7 +19,7 @@ const MESSAGES = {
     "auth/weak-password": "Password is too weak.",
     "auth/network-request-failed": "Network error. Check your connection.",
     "auth/invalid-api-key": "Firebase API key is invalid. Check your .env file.",
-    "auth/operation-not-allowed": "Email/Password sign-in is disabled in Firebase console.",
+    "auth/operation-not-allowed": "This action is disabled in Firebase Authentication settings.",
     "auth/requires-recent-login": "Please sign in again to continue.",
     "storage/unauthorized": "Storage permission denied. Check storage.rules.",
     "storage/not-configured": "File storage is not configured yet.",

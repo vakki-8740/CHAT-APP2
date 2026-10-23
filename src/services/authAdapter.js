@@ -119,7 +119,17 @@ const firebaseAdapter = {
             await user.getIdToken(true);
             return { changed: true, previousEmail };
         } catch (error) {
-            throw toAppError(error, "Could not change the mobile number.");
+            const appError = toAppError(error, "Could not change the mobile number.");
+            if (
+                appError.code === "auth/operation-not-allowed" &&
+                /verify the new email/i.test(String(error?.message || ""))
+            ) {
+                throw new AppError(
+                    "auth/email-enumeration-protection",
+                    "Mobile change is blocked by Firebase settings. Turn off Email enumeration protection in Authentication settings, then retry."
+                );
+            }
+            throw appError;
         }
     },
 

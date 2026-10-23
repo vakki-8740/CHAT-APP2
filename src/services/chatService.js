@@ -82,7 +82,11 @@ export function createThreadService(collectionName) {
             const q = query(col(), where("participants", "array-contains", uid));
             return onSnapshot(
                 q,
-                (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+                (snap) =>
+                    onData(
+                        snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+                        { fromCache: snap.metadata.fromCache }
+                    ),
                 (error) => onError?.(toAppError(error))
             );
         },

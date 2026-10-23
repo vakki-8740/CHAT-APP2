@@ -17,6 +17,7 @@ import { chatService, makeChatId } from "../services/chatService";
 import { userService, isOnline } from "../services/userService";
 import { storageStatus, uploadFile } from "../services/storageAdapter";
 import { validateFile } from "../utils/validation";
+import { playSound } from "../utils/sounds";
 import { formatDayLabel, toDate } from "../utils/format";
 
 export default function ChatPage() {
@@ -129,6 +130,7 @@ export default function ChatPage() {
                 imageUrl: message.imageUrl,
                 replyTo: message.replyTo
             });
+            playSound("messageSent");
             setPending((list) =>
                 list.map((item) =>
                     item.id === message.id ? { ...item, status: "sent" } : item

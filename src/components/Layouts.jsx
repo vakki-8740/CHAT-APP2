@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { LoadingScreen } from "./LoadingScreen";
 import { BottomNav } from "./BottomNav";
 import { ErrorState } from "./ErrorState";
+import { NotificationSounds } from "./NotificationSounds";
 
 export function ProtectedLayout() {
     const { firebaseUser, loading, profileError, refreshProfile, logout } = useAuth();
@@ -31,7 +32,12 @@ export function ProtectedLayout() {
         );
     }
 
-    return <Outlet />;
+    return (
+        <>
+            <NotificationSounds uid={firebaseUser.uid} />
+            <Outlet />
+        </>
+    );
 }
 
 export function TabLayout() {

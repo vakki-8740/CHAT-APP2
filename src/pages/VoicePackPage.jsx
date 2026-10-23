@@ -38,7 +38,6 @@ export default function VoicePackPage() {
                     </span>
                     <div>
                         <h1 className="text-xl font-bold tracking-tight">Voice Pack</h1>
-                        <p className="text-sm text-muted">Record or send audio files privately.</p>
                     </div>
                 </div>
                 <div className="mt-3">

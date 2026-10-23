@@ -609,6 +609,7 @@
     function renderConfig(config) {
       els.config.replaceChildren();
       const data = config || {};
+      addConfigItem("Configuration source", data.config_source || "Not configured");
       addConfigItem("Public backend URL", data.public_base_url || "Not configured");
       addConfigItem("Firebase Auth host", data.auth_host || "Not configured");
       addConfigItem(

@@ -68,10 +68,30 @@ root as the website root.
 
 ## 2. Configure
 
+You can use either `config.php` or environment variables. Environment variables
+override values from the file, which is useful for PaaS/serverless hosts such as
+Wasmer where secrets should not be committed.
+
 ```bash
 cp config.example.php config.php
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"   # file_url_secret
 ```
+
+Supported environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `CHAT_FIREBASE_API_KEY` | Firebase Web API key for token validation |
+| `CHAT_AUTH_LOOKUP_URL` | Identity Toolkit lookup URL |
+| `CHAT_ALLOWED_ORIGINS` | Comma-separated frontend origins |
+| `CHAT_PUBLIC_BASE_URL` | Public backend base URL, including `/public` if used |
+| `CHAT_FILE_URL_SECRET` | Random 32+ character signing secret |
+| `CHAT_STORAGE_DIR` | Writable/persistent storage path |
+| `CHAT_MAX_IMAGE_BYTES` | Optional image size limit |
+| `CHAT_MAX_AUDIO_BYTES` | Optional audio size limit |
+
+If neither `config.php` nor the required variables exist, the dashboard and
+uploads report a configuration error.
 
 Fill in `config.php`:
 
@@ -94,6 +114,27 @@ chmod 775 storage
 The included `storage/.htaccess` blocks direct Apache access. The app serves
 files through `file.php` with signed URLs, so uploaded files are not publicly
 listable.
+
+### Wasmer Edge
+
+Wasmer serves the repository/app root, so the backend is reachable under
+`/public/` (for example `https://APP.wasmer.app/public/upload.php`). Deploy the
+`backend-php` directory as the app, set the environment variables above, and
+mount a persistent volume for media:
+
+```yaml
+volumes:
+  - name: media
+    mount: /data
+```
+
+Then set `CHAT_STORAGE_DIR=/data`. Without a volume, Wasmer's filesystem is
+ephemeral and uploaded files can disappear after a restart or redeploy.
+
+Set `CHAT_PUBLIC_BASE_URL` to the `/public` URL, for example
+`https://APP.wasmer.app/public`, and add the Vercel/custom frontend origin to
+`CHAT_ALLOWED_ORIGINS`. The app's root URL itself may return 403 because only
+`public/` is meant to be web-accessible.
 
 ## 3. Upload limits
 

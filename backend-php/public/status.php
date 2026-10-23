@@ -9,6 +9,8 @@ header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 header('X-Robots-Tag: noindex');
 
+require dirname(__DIR__) . '/src/http.php';
+
 function add_check(array &$checks, string $id, string $label, string $status, string $message): void
 {
     $checks[] = [
@@ -154,20 +156,15 @@ function check_firebase_lookup(array $config): array
 $checks = [];
 $config = null;
 $configError = '';
-$configPath = dirname(__DIR__) . '/config.php';
+$configSource = backend_config_source();
 
-if (!is_file($configPath)) {
-    $configError = 'config.php is missing. Copy config.example.php to config.php and fill it in.';
+if ($configSource === 'none') {
+    $configError = 'config.php is missing and no CHAT_* environment variables were found.';
 } else {
     try {
-        $loaded = require $configPath;
-        if (!is_array($loaded)) {
-            $configError = 'config.php did not return a configuration array.';
-        } else {
-            $config = $loaded;
-        }
+        $config = load_backend_config();
     } catch (Throwable $error) {
-        $configError = 'config.php could not be loaded.';
+        $configError = 'Backend configuration could not be loaded.';
     }
 }
 
@@ -194,7 +191,15 @@ foreach (['curl', 'fileinfo', 'json', 'openssl'] as $extension) {
 if ($configError !== '') {
     add_check($checks, 'config', 'Configuration', 'error', $configError);
 } else {
-    add_check($checks, 'config', 'Configuration', 'ok', 'config.php loaded.');
+    add_check(
+        $checks,
+        'config',
+        'Configuration',
+        'ok',
+        $configSource === 'config.php'
+            ? 'config.php loaded.'
+            : 'Environment variables loaded.'
+    );
 
     $required = ['firebase_api_key', 'auth_lookup_url', 'public_base_url', 'storage_dir'];
     $missing = [];
@@ -467,6 +472,7 @@ echo json_encode(
             'allowed_origins' => is_array($config['allowed_origins'] ?? null)
                 ? array_values($config['allowed_origins'])
                 : [],
+            'config_source' => $configSource,
             'max_image_bytes' => $maxImage,
             'max_audio_bytes' => $maxAudio,
             'php_upload_max_bytes' => $uploadMax,

@@ -44,9 +44,6 @@ export default function HomePage() {
                         </span>
                     ) : null}
                 </div>
-                <p className="mt-0.5 text-sm text-muted">
-                    Everyone who registered gets a private chat with you.
-                </p>
                 <div className="mt-3">
                     <SearchBar
                         value={query}

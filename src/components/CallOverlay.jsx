@@ -12,6 +12,7 @@ import { Avatar } from "./Avatar";
 import { Spinner } from "./LoadingScreen";
 import { useCall } from "../context/CallContext";
 import { formatClock } from "../utils/format";
+import { playRingtone, stopRingtone } from "../utils/sounds";
 import { cn } from "../utils/cn";
 
 function StreamVideo({ stream, muted = false, mirrored = false, className }) {
@@ -105,6 +106,13 @@ function ControlButton({
 
 function IncomingCallModal() {
     const { incomingCall, acceptingCall, acceptCall, declineCall } = useCall();
+    const incomingId = incomingCall?.id;
+
+    useEffect(() => {
+        if (!incomingId) return undefined;
+        playRingtone(0.85);
+        return stopRingtone;
+    }, [incomingId]);
 
     if (!incomingCall) return null;
 
@@ -143,7 +151,10 @@ function IncomingCallModal() {
                     <div className="flex flex-col items-center gap-2">
                         <button
                             type="button"
-                            onClick={() => declineCall(incomingCall)}
+                            onClick={() => {
+                                stopRingtone();
+                                declineCall(incomingCall);
+                            }}
                             disabled={acceptingCall}
                             className="flex size-16 items-center justify-center rounded-full bg-danger text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
                             aria-label="Decline call"
@@ -156,7 +167,10 @@ function IncomingCallModal() {
                     <div className="flex flex-col items-center gap-2">
                         <button
                             type="button"
-                            onClick={() => acceptCall(incomingCall)}
+                            onClick={() => {
+                                stopRingtone();
+                                acceptCall(incomingCall);
+                            }}
                             disabled={acceptingCall}
                             className="flex size-16 items-center justify-center rounded-full bg-success text-white transition-colors hover:bg-success/90 disabled:opacity-50"
                             aria-label="Accept call"
@@ -187,6 +201,14 @@ function ActiveCallOverlay() {
         toggleCamera,
         switchCamera
     } = useCall();
+    const callId = activeCall?.callId;
+    const ringing = activeCall?.status === "ringing";
+
+    useEffect(() => {
+        if (!ringing) return undefined;
+        playRingtone(0.45);
+        return stopRingtone;
+    }, [ringing, callId]);
 
     if (!activeCall) return null;
 

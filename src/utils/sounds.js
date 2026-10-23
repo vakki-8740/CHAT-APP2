@@ -4,8 +4,13 @@ const SOURCES = {
     messageSent: "/sounds/message-sent.mp3"
 };
 
+const LOOP_SOURCES = {
+    ringtone: "/sounds/call-ringtone.mp3"
+};
+
 const POOL_SIZE = 4;
 const pools = new Map();
+const loops = new Map();
 let unlockInstalled = false;
 let unlocked = false;
 
@@ -26,9 +31,23 @@ function getPool(name) {
     return pools.get(name) || createPool(name);
 }
 
+function getLoop(name) {
+    let audio = loops.get(name);
+    if (!audio) {
+        audio = new Audio(LOOP_SOURCES[name]);
+        audio.preload = "auto";
+        audio.loop = true;
+        audio.volume = 0.8;
+        audio.load();
+        loops.set(name, audio);
+    }
+    return audio;
+}
+
 export function preloadSounds() {
     if (typeof window === "undefined") return;
     for (const name of Object.keys(SOURCES)) getPool(name);
+    for (const name of Object.keys(LOOP_SOURCES)) getLoop(name);
 }
 
 export function playSound(name) {
@@ -47,6 +66,27 @@ export function playSound(name) {
     } catch {}
 }
 
+export function playRingtone(volume = 0.85) {
+    if (typeof window === "undefined") return;
+    const audio = getLoop("ringtone");
+    if (!audio.paused) return;
+    try {
+        audio.volume = volume;
+        audio.currentTime = 0;
+        const result = audio.play();
+        if (result?.catch) result.catch(() => {});
+    } catch {}
+}
+
+export function stopRingtone() {
+    const audio = loops.get("ringtone");
+    if (!audio) return;
+    try {
+        audio.pause();
+        audio.currentTime = 0;
+    } catch {}
+}
+
 function unlock() {
     if (unlocked) return;
     let attempts = 0;
@@ -55,8 +95,9 @@ function unlock() {
         finished += 1;
         if (finished >= attempts) unlocked = true;
     };
-    for (const name of Object.keys(SOURCES)) {
-        const audio = getPool(name).list[0];
+    const names = [...Object.keys(SOURCES), ...Object.keys(LOOP_SOURCES)];
+    for (const name of names) {
+        const audio = SOURCES[name] ? getPool(name).list[0] : getLoop(name);
         const volume = audio.volume;
         audio.volume = 0;
         attempts += 1;

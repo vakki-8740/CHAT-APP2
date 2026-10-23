@@ -148,6 +148,38 @@ VITE_EMULATOR_HOST=127.0.0.1
 - The emulators bind to `127.0.0.1`. To test from another device, bind them to
   `0.0.0.0` and set `VITE_EMULATOR_HOST` to this machine's LAN IP.
 
+## 8. Production deployment
+
+Production builds **refuse to compile** with demo/emulator values. This includes
+`.env.local`, which overrides `.env` during a local build and is gitignored.
+
+1. In the Firebase Console, enable **Authentication → Email/Password**, create
+   **Firestore**, and create **Storage** if you want image/voice uploads.
+2. Fill real values in `.env` (`cp .env.example .env`).
+3. Move the local emulator config out of the way:
+   ```bash
+   mv .env.local .env.local.testing
+   ```
+4. Select the real project (creates a gitignored `.firebaserc`):
+   ```bash
+   firebase login
+   firebase use --add
+   ```
+5. Build and deploy:
+   ```bash
+   npm run build
+   firebase deploy --only firestore:rules,storage,hosting
+   ```
+   Omit `storage` from `--only` if Storage is not enabled.
+6. In **Authentication → Settings → Authorized domains**, add the Hosting domain
+   (`<project>.web.app` / your custom domain).
+7. To return to local emulator testing:
+   ```bash
+   mv .env.local.testing .env.local
+   ```
+
+The generated `dist/` folder is intentionally gitignored and is never committed.
+
 ## Authentication design (mobile number + password)
 
 Firebase's native phone sign-in is OTP-based and has no password method. This

@@ -28,9 +28,11 @@ export const isFirebaseConfigured = Boolean(
 );
 
 export const emulator = {
+    // Emulators are allowed only in local development builds.
     enabled:
-        read("VITE_USE_FIREBASE_EMULATORS") === "true" ||
-        env.firebase.projectId.startsWith("demo-"),
+        !import.meta.env.PROD &&
+        (read("VITE_USE_FIREBASE_EMULATORS") === "true" ||
+            env.firebase.projectId.startsWith("demo-")),
     host: read("VITE_EMULATOR_HOST", "127.0.0.1") || "127.0.0.1",
     authPort: 9099,
     firestorePort: 8080,

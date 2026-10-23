@@ -119,7 +119,8 @@ VITE_UPLOAD_ENDPOINT=https://api.your-domain.com/upload.php
 
 Deploy the PHP backend separately; see its README for the document root, CORS,
 storage permissions and configuration. No Firebase Storage/Blaze plan is
-required.
+required. Open the backend URL after deployment for its status dashboard, which
+lists working features and any configuration errors.
 
 ## 6. Run
 

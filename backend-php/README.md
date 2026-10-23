@@ -20,6 +20,8 @@ host.
 | `POST` | `/upload.php` | Multipart upload: `file` + `folder` |
 | `GET` / `HEAD` | `/file.php?p=...&s=...` | Serve a signed file URL |
 | `GET` | `/health.php` | Liveness check |
+| `GET` | `/` | HTML status dashboard |
+| `GET` | `/status.php` | Dashboard diagnostics as JSON |
 
 Upload response:
 
@@ -29,6 +31,16 @@ Upload response:
   "path": "voiceNotes/uidA_uidB/abc.webm"
 }
 ```
+
+## Dashboard
+
+Open the backend's public URL (`https://api.your-domain.com/`) to see a small
+status page. It checks PHP/extensions, config, storage, upload limits, CORS,
+Firebase token validation and endpoint files, then lists which features are
+working and which need attention. It never displays API keys, file secrets,
+tokens or absolute server paths.
+
+The page calls `/status.php`, so both files must stay in `public/`.
 
 ## 1. Upload the backend
 
@@ -41,6 +53,8 @@ backend-php/
   config.php            <- create from config.example.php
   src/http.php
   public/
+    index.html
+    status.php
     upload.php
     file.php
     health.php

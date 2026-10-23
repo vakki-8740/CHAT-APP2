@@ -18,6 +18,8 @@ import { storageStatus, uploadFile } from "../services/storageAdapter";
 import { validateFile } from "../utils/validation";
 import { formatDayLabel, toDate } from "../utils/format";
 import { getAudioDuration } from "../utils/files";
+import { limits } from "../config/app";
+import { cn } from "../utils/cn";
 
 export default function VoiceChatPage() {
     const { uid: peerUid } = useParams();
@@ -35,6 +37,7 @@ export default function VoiceChatPage() {
     const [confirmBusy, setConfirmBusy] = useState(false);
     const [pending, setPending] = useState([]);
     const [uploading, setUploading] = useState(false);
+    const [voiceActive, setVoiceActive] = useState(false);
 
     const fileRef = useRef(null);
     const bottomRef = useRef(null);
@@ -49,6 +52,7 @@ export default function VoiceChatPage() {
         setReplyTo(null);
         setMenuMessage(null);
         setConfirm(null);
+        setVoiceActive(false);
         previousCount.current = 0;
     }, [peerUid]);
 
@@ -124,6 +128,10 @@ export default function VoiceChatPage() {
             toast.error(status.message);
             return;
         }
+        if (Number(duration) > limits.voiceMaxSeconds + 0.5) {
+            toast.error("Voice notes can be up to 5 minutes.");
+            return;
+        }
 
         const id = messageId || voiceService.newMessageId(uid, peerUid);
         const local = localUrl || URL.createObjectURL(file);
@@ -190,6 +198,14 @@ export default function VoiceChatPage() {
             return;
         }
         const duration = await getAudioDuration(file);
+        if (!duration) {
+            toast.error("Could not read the audio length.");
+            return;
+        }
+        if (duration > limits.voiceMaxSeconds + 0.5) {
+            toast.error("Voice notes can be up to 5 minutes.");
+            return;
+        }
         await sendVoice({ file, duration });
     }
 
@@ -349,43 +365,52 @@ export default function VoiceChatPage() {
                     </div>
                 ) : null}
 
-                <div className="flex items-center gap-2">
-                    <input
-                        ref={fileRef}
-                        type="file"
-                        accept="audio/*"
-                        className="hidden"
-                        onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            event.target.value = "";
-                            if (file) handleAudioFile(file);
-                        }}
-                    />
+                {uploading ? (
+                    <div className="mb-2 flex items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2 text-xs font-medium text-muted">
+                        <Spinner className="size-4 text-accent" />
+                        Uploading voice note…
+                    </div>
+                ) : null}
+
+                <input
+                    ref={fileRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file) handleAudioFile(file);
+                    }}
+                />
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] gap-2">
                     <button
                         type="button"
                         onClick={() => fileRef.current?.click()}
-                        disabled={uploading}
-                        className="flex size-10 shrink-0 items-center justify-center rounded-full border border-line bg-bg text-muted hover:border-accent hover:text-accent disabled:opacity-40"
+                        disabled={uploading || voiceActive}
+                        className={cn(
+                            "flex h-11 items-center justify-center gap-2 rounded-xl border border-line bg-bg px-3 text-sm font-semibold text-muted hover:border-accent hover:text-accent disabled:opacity-40",
+                            voiceActive ? "hidden" : ""
+                        )}
                         aria-label="Attach an audio file"
                     >
                         <Paperclip className="size-[18px]" />
+                        Audio file
                     </button>
-                    <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium">
-                            {uploading ? "Uploading voice note…" : "Record or attach a voice note"}
-                        </p>
-                        <p className="truncate text-2xs text-muted">
-                            Audio stays private to this conversation.
-                        </p>
-                    </div>
-                    {uploading ? (
-                        <Spinner className="size-5 text-accent" />
-                    ) : (
-                        <VoiceRecorder
-                            onRecorded={({ file, duration }) => sendVoice({ file, duration })}
-                        />
-                    )}
+                    <VoiceRecorder
+                        key={peerUid}
+                        className={voiceActive ? "col-span-2" : ""}
+                        disabled={uploading}
+                        onActiveChange={setVoiceActive}
+                        onRecorded={({ file, duration, limitReached }) => {
+                            if (limitReached) toast.info("5-minute limit reached.");
+                            sendVoice({ file, duration });
+                        }}
+                    />
                 </div>
+                <p className="mt-1.5 text-center text-[10px] font-medium text-muted">
+                    Up to 5:00
+                </p>
             </div>
 
             <MessageMenu

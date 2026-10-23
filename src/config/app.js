@@ -6,8 +6,9 @@ export const branding = {
 
 // Limits used across chat + voice pack.
 export const limits = {
-    imageMaxBytes: 8 * 1024 * 1024, // 8 MB
+    imageMaxBytes: 10 * 1024 * 1024, // 10 MB
     audioMaxBytes: 15 * 1024 * 1024, // 15 MB
+    voiceMaxSeconds: 5 * 60,
     imageTypes: ["image/png", "image/jpeg", "image/webp", "image/gif"],
     audioTypes: [
         "audio/webm",

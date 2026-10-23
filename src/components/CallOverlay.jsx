@@ -117,8 +117,8 @@ function IncomingCallModal() {
             aria-modal="true"
             aria-label={`Incoming ${incomingCall.type} call`}
         >
-            <div className="animate-fade-in w-full max-w-sm rounded-2xl border border-white/10 bg-[#141824] p-6 text-center text-white shadow-2xl">
-                <p className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
+            <div className="animate-fade-in w-full max-w-sm rounded-2xl border border-line bg-card p-6 text-center text-ink shadow-card">
+                <p className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                     <span className="size-2 animate-pulse rounded-full bg-success" />
                     Incoming {isVideo ? "video" : "voice"} call
                 </p>
@@ -135,7 +135,7 @@ function IncomingCallModal() {
                 <h2 className="mt-5 truncate text-2xl font-bold">
                     {incomingCall.callerName || "Someone"}
                 </h2>
-                <p className="mt-1 text-sm text-white/60">
+                <p className="mt-1 text-sm text-muted">
                     {isVideo ? "Video call" : "Voice call"} · Tap accept to join
                 </p>
 
@@ -150,7 +150,7 @@ function IncomingCallModal() {
                         >
                             <PhoneOff className="size-6" />
                         </button>
-                        <span className="text-xs font-medium text-white/60">Decline</span>
+                        <span className="text-xs font-medium text-muted">Decline</span>
                     </div>
 
                     <div className="flex flex-col items-center gap-2">
@@ -169,7 +169,7 @@ function IncomingCallModal() {
                                 <Phone className="size-6" />
                             )}
                         </button>
-                        <span className="text-xs font-medium text-white/60">
+                        <span className="text-xs font-medium text-muted">
                             {acceptingCall ? "Joining…" : "Accept"}
                         </span>
                     </div>

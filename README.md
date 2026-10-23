@@ -232,6 +232,12 @@ If the build fails with `Missing: VITE_FIREBASE_...`, those variables are not
 visible to the build. Check that they are added to the Production environment
 and trigger a new deployment.
 
+This repo also includes `.env.production` with the public Firebase web config,
+so a Git-based Vercel deploy works without dashboard variables. Vercel
+environment variables (if set) take precedence. The Firebase web API key is a
+public client identifier, not a server secret — protect the project with the
+included Firestore rules and API key restrictions.
+
 ## Authentication design (mobile number + password)
 
 Firebase's native phone sign-in is OTP-based and has no password method. This

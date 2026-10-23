@@ -106,7 +106,11 @@ function backend_env_config(): array
         if ($value === null) {
             continue;
         }
-        $config[$key] = in_array($key, ['auth_lookup_url', 'public_base_url'], true)
+        $config[$key] = in_array(
+            $key,
+            ['auth_lookup_url', 'public_base_url', 'file_url_secret', 'firebase_api_key'],
+            true
+        )
             ? backend_clean_url($value)
             : $value;
     }

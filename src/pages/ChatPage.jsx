@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, MessageSquare, WifiOff } from "lucide-react";
 import { Avatar } from "../components/Avatar";
 import { ChatBubble } from "../components/ChatBubble";
+import { CallButton } from "../components/CallButton";
 import { MessageComposer } from "../components/MessageComposer";
 import { MessageMenu } from "../components/MessageMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -482,6 +483,7 @@ function ChatHeader({ peer, online, subtitle }) {
                     </p>
                     <p className="truncate text-2xs text-muted">{subtitle}</p>
                 </div>
+                <CallButton peer={peer} />
             </div>
         </header>
     );

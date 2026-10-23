@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Mic, Paperclip, X } from "lucide-react";
 import { Avatar } from "../components/Avatar";
 import { ChatBubble } from "../components/ChatBubble";
+import { CallButton } from "../components/CallButton";
 import { VoiceRecorder } from "../components/VoiceRecorder";
 import { MessageMenu } from "../components/MessageMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -500,9 +501,7 @@ function VoiceHeader({ peer, online, subtitle }) {
                     </p>
                     <p className="truncate text-2xs text-muted">{subtitle}</p>
                 </div>
-                <span className="flex size-8 items-center justify-center rounded-full bg-accent-soft text-accent">
-                    <Mic className="size-4" />
-                </span>
+                <CallButton peer={peer} />
             </div>
         </header>
     );

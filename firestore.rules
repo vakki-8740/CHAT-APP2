@@ -199,6 +199,99 @@ service cloud.firestore {
       }
     }
 
+    // ---------------------------------------------------------------
+    // One-to-one voice/video calls. The call document carries the SDP
+    // offer/answer and status; ICE candidates live in subcollections.
+    // ---------------------------------------------------------------
+    match /calls/{callId} {
+      // The incoming-call listener filters by calleeId, so the read rule
+      // must be provable from that query for Firestore's list checks.
+      allow read: if signedIn()
+        && (resource.data.calleeId == request.auth.uid
+          || resource.data.callerId == request.auth.uid);
+
+      allow create: if signedIn()
+        && request.resource.data.callerId == request.auth.uid
+        && request.resource.data.calleeId != request.auth.uid
+        && validParticipants(request.resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.type in ['voice', 'video']
+        && request.resource.data.status == 'ringing'
+        && request.resource.data.offer is map
+        && request.resource.data.answer == null
+        && request.resource.data.callerName is string
+        && request.resource.data.callerName.size() > 0
+        && request.resource.data.callerName.size() <= 80
+        && request.resource.data.callerPhotoURL is string
+        && request.resource.data.keys().hasOnly([
+          'participants', 'chatId', 'callerId', 'calleeId', 'type', 'status',
+          'offer', 'answer', 'callerName', 'callerPhotoURL', 'endedBy',
+          'connectedAt', 'endedAt', 'createdAt', 'updatedAt'
+        ]);
+
+      allow update: if signedIn()
+        && isParticipant(resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.chatId == resource.data.chatId
+        && request.resource.data.callerId == resource.data.callerId
+        && request.resource.data.calleeId == resource.data.calleeId
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.status in [
+          'ringing', 'accepted', 'declined', 'missed', 'cancelled', 'ended',
+          'failed', 'busy'
+        ]
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'answer', 'endedBy', 'connectedAt', 'endedAt', 'updatedAt'
+        ]);
+
+      allow delete: if false;
+
+      match /callerCandidates/{candidateId} {
+        function parentCall() {
+          return get(/databases/$(database)/documents/calls/$(callId));
+        }
+
+        allow read: if signedIn()
+          && request.auth.uid in parentCall().data.participants;
+
+        allow create: if signedIn()
+          && request.auth.uid in parentCall().data.participants
+          && request.resource.data.candidate is string
+          && request.resource.data.candidate.size() <= 4096
+          && request.resource.data.sdpMid is string
+          && (request.resource.data.sdpMLineIndex == null
+            || request.resource.data.sdpMLineIndex is int)
+          && request.resource.data.keys().hasOnly([
+            'candidate', 'sdpMid', 'sdpMLineIndex', 'usernameFragment', 'createdAt'
+          ]);
+
+        allow update, delete: if false;
+      }
+
+      match /calleeCandidates/{candidateId} {
+        function parentCall() {
+          return get(/databases/$(database)/documents/calls/$(callId));
+        }
+
+        allow read: if signedIn()
+          && request.auth.uid in parentCall().data.participants;
+
+        allow create: if signedIn()
+          && request.auth.uid in parentCall().data.participants
+          && request.resource.data.candidate is string
+          && request.resource.data.candidate.size() <= 4096
+          && request.resource.data.sdpMid is string
+          && (request.resource.data.sdpMLineIndex == null
+            || request.resource.data.sdpMLineIndex is int)
+          && request.resource.data.keys().hasOnly([
+            'candidate', 'sdpMid', 'sdpMLineIndex', 'usernameFragment', 'createdAt'
+          ]);
+
+        allow update, delete: if false;
+      }
+    }
+
     // Everything else is closed by default.
     match /{document=**} {
       allow read, write: if false;

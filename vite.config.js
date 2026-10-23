@@ -18,7 +18,8 @@ export default defineConfig(({ command, mode }) => {
                         ? "Remove the demo project from .env.local (it overrides .env)."
                         : "",
                     usesEmulators ? "VITE_USE_FIREBASE_EMULATORS must not be enabled." : "",
-                    "Move .env.local away, fill real values in .env, then run the build again."
+                    "Add real VITE_FIREBASE_* environment variables in your hosting provider (Vercel/Netlify/etc.) or .env, then redeploy.",
+                    "If .env.local exists locally, move it away: it overrides .env and the demo project."
                 ]
                     .filter(Boolean)
                     .join(" ")

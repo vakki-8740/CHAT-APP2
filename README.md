@@ -205,6 +205,33 @@ Production builds **refuse to compile** with demo/emulator values. This includes
 
 The generated `dist/` folder is intentionally gitignored and is never committed.
 
+### Vercel frontend
+
+Set **Root Directory** to the repository root (leave it empty) and add these
+variables in **Vercel → Project → Settings → Environment Variables** for the
+**Production** environment:
+
+```env
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project
+VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+# omit VITE_FIREBASE_STORAGE_BUCKET when using the PHP backend
+VITE_STORAGE_PROVIDER=http
+VITE_UPLOAD_ENDPOINT=https://api.your-domain.com/upload.php
+```
+
+Redeploy after adding variables — Vercel only reads them during a new build.
+`vercel.json` adds the SPA rewrite so `/chat/:uid` and `/profile` survive a
+refresh. Also add the Vercel domain (`<project>.vercel.app` and any custom
+domain) to Firebase **Authentication → Settings → Authorized domains**, and to
+`allowed_origins` in the PHP backend config.
+
+If the build fails with `Missing: VITE_FIREBASE_...`, those variables are not
+visible to the build. Check that they are added to the Production environment
+and trigger a new deployment.
+
 ## Authentication design (mobile number + password)
 
 Firebase's native phone sign-in is OTP-based and has no password method. This

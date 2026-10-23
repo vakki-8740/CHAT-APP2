@@ -146,7 +146,7 @@ export function ChatBubble({
                 ) : null}
             </div>
 
-            {!deleted && !message.status ? (
+            {!message.status ? (
                 <button
                     type="button"
                     onClick={() => onMenu?.(message)}

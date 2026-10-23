@@ -1,4 +1,4 @@
-import { Ban, Copy, Pencil, Reply, Users, X } from "lucide-react";
+import { Ban, Copy, Pencil, Reply, Trash2, Users, X } from "lucide-react";
 import { REACTION_PALETTE } from "../utils/emoji";
 import { cn } from "../utils/cn";
 
@@ -28,7 +28,8 @@ export function MessageMenu({
     onCopy,
     onReact,
     onDeleteForMe,
-    onDeleteForEveryone
+    onDeleteForEveryone,
+    onDeletePermanently
 }) {
     if (!message) return null;
 
@@ -87,6 +88,14 @@ export function MessageMenu({
                         onClick={onDeleteForMe}
                         danger
                     />
+                    {mine && deleted ? (
+                        <Action
+                            icon={Trash2}
+                            label="Delete permanently"
+                            onClick={onDeletePermanently}
+                            danger
+                        />
+                    ) : null}
                     {mine && !deleted ? (
                         <Action
                             icon={Users}

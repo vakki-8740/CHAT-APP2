@@ -262,7 +262,14 @@ export default function ChatPage() {
         if (!confirm) return;
         setConfirmBusy(true);
         try {
-            if (confirm.scope === "everyone") {
+            if (confirm.scope === "permanent") {
+                await chatService.deletePermanently({
+                    uid,
+                    otherUid: peerUid,
+                    messageId: confirm.message.id
+                });
+                toast.success("Deleted permanently.");
+            } else if (confirm.scope === "everyone") {
                 await chatService.deleteForEveryone({
                     uid,
                     otherUid: peerUid,
@@ -410,20 +417,36 @@ export default function ChatPage() {
                     setMenuMessage(null);
                     setConfirm({ message: menuMessage, scope: "everyone" });
                 }}
+                onDeletePermanently={() => {
+                    setMenuMessage(null);
+                    setConfirm({ message: menuMessage, scope: "permanent" });
+                }}
             />
 
             <ConfirmDialog
                 open={Boolean(confirm)}
-                title={confirm?.scope === "everyone" ? "Delete for everyone?" : "Delete message?"}
+                title={
+                    confirm?.scope === "permanent"
+                        ? "Delete permanently?"
+                        : confirm?.scope === "everyone"
+                          ? "Delete for everyone?"
+                          : "Delete message?"
+                }
                 description={
-                    confirm?.scope === "everyone"
-                        ? `This message will be removed for you and ${
-                              peer?.displayName || "the other person"
-                          }. This cannot be undone.`
-                        : "This message will be removed only from your view. The other person will still see it."
+                    confirm?.scope === "permanent"
+                        ? `This deleted message will be removed from both chats with no trace.`
+                        : confirm?.scope === "everyone"
+                          ? `This message will be removed for you and ${
+                                peer?.displayName || "the other person"
+                            }. This cannot be undone.`
+                          : "This message will be removed only from your view. The other person will still see it."
                 }
                 confirmLabel={
-                    confirm?.scope === "everyone" ? "Delete for everyone" : "Delete for me"
+                    confirm?.scope === "permanent"
+                        ? "Delete permanently"
+                        : confirm?.scope === "everyone"
+                          ? "Delete for everyone"
+                          : "Delete for me"
                 }
                 busy={confirmBusy}
                 onConfirm={handleDelete}

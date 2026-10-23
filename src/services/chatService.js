@@ -2,6 +2,7 @@ import {
     collection,
     doc,
     getDoc,
+    getDocs,
     setDoc,
     updateDoc,
     runTransaction,
@@ -280,6 +281,75 @@ export function createThreadService(collectionName) {
                 }
             } catch (error) {
                 throw toAppError(error, "Could not delete the message.");
+            }
+        },
+
+        async deletePermanently({ uid, otherUid, messageId }) {
+            requireDb();
+            const chatId = makeChatId(uid, otherUid);
+            const ref = messageRef(chatId, messageId);
+            try {
+                const snap = await getDoc(ref);
+                if (!snap.exists()) return;
+                const data = snap.data();
+                if (data.senderId !== uid || !data.deletedForEveryone) {
+                    throw new AppError(
+                        "permission-denied",
+                        "This message cannot be removed permanently."
+                    );
+                }
+
+                await updateDoc(ref, { hiddenFor: arrayUnion(uid, otherUid) });
+
+                const chatSnap = await getDoc(chatRef(uid, otherUid));
+                if (!chatSnap.exists() || chatSnap.data().lastMessage?.id !== messageId) {
+                    return;
+                }
+
+                let previous = null;
+                if (data.createdAt) {
+                    const recent = await getDocs(
+                        query(
+                            collection(db, collectionName, chatId, "messages"),
+                            where("createdAt", "<=", data.createdAt),
+                            orderBy("createdAt", "desc"),
+                            limit(5)
+                        )
+                    );
+                    previous =
+                        recent.docs.find((item) => {
+                            if (item.id === messageId) return false;
+                            const hidden = Array.isArray(item.data().hiddenFor)
+                                ? item.data().hiddenFor
+                                : [];
+                            return !(hidden.includes(uid) && hidden.includes(otherUid));
+                        }) || null;
+                }
+
+                if (!previous) {
+                    await updateDoc(chatRef(uid, otherUid), {
+                        lastMessage: null,
+                        updatedAt: serverTimestamp()
+                    });
+                    return;
+                }
+
+                const last = previous.data();
+                await updateDoc(chatRef(uid, otherUid), {
+                    lastMessage: {
+                        id: previous.id,
+                        type: last.type,
+                        text: previewForMessage(last.type, last.text),
+                        senderId: last.senderId,
+                        createdAt: last.createdAt,
+                        edited: Boolean(last.editedAt),
+                        deletedForEveryone: Boolean(last.deletedForEveryone)
+                    },
+                    updatedAt: serverTimestamp()
+                });
+            } catch (error) {
+                if (error instanceof AppError) throw error;
+                throw toAppError(error, "Could not delete the message permanently.");
             }
         },
 

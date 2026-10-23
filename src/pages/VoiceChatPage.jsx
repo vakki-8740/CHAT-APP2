@@ -232,7 +232,14 @@ export default function VoiceChatPage() {
         if (!confirm) return;
         setConfirmBusy(true);
         try {
-            if (confirm.scope === "everyone") {
+            if (confirm.scope === "permanent") {
+                await voiceService.deletePermanently({
+                    uid,
+                    otherUid: peerUid,
+                    messageId: confirm.message.id
+                });
+                toast.success("Deleted permanently.");
+            } else if (confirm.scope === "everyone") {
                 await voiceService.deleteForEveryone({
                     uid,
                     otherUid: peerUid,
@@ -430,20 +437,36 @@ export default function VoiceChatPage() {
                     setMenuMessage(null);
                     setConfirm({ message: menuMessage, scope: "everyone" });
                 }}
+                onDeletePermanently={() => {
+                    setMenuMessage(null);
+                    setConfirm({ message: menuMessage, scope: "permanent" });
+                }}
             />
 
             <ConfirmDialog
                 open={Boolean(confirm)}
-                title={confirm?.scope === "everyone" ? "Delete for everyone?" : "Delete voice note?"}
+                title={
+                    confirm?.scope === "permanent"
+                        ? "Delete permanently?"
+                        : confirm?.scope === "everyone"
+                          ? "Delete for everyone?"
+                          : "Delete voice note?"
+                }
                 description={
-                    confirm?.scope === "everyone"
-                        ? `This voice note will be removed for you and ${
-                              peer?.displayName || "the other person"
-                          }. This cannot be undone.`
-                        : "This voice note will be removed only from your view."
+                    confirm?.scope === "permanent"
+                        ? "This deleted voice note will be removed from both chats with no trace."
+                        : confirm?.scope === "everyone"
+                          ? `This voice note will be removed for you and ${
+                                peer?.displayName || "the other person"
+                            }. This cannot be undone.`
+                          : "This voice note will be removed only from your view."
                 }
                 confirmLabel={
-                    confirm?.scope === "everyone" ? "Delete for everyone" : "Delete for me"
+                    confirm?.scope === "permanent"
+                        ? "Delete permanently"
+                        : confirm?.scope === "everyone"
+                          ? "Delete for everyone"
+                          : "Delete for me"
                 }
                 busy={confirmBusy}
                 onConfirm={handleDelete}

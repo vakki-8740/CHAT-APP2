@@ -79,6 +79,17 @@ function backend_detect_base_url(): string
     return $proto . '://' . $host . $scriptDir;
 }
 
+function backend_clean_url(?string $value): ?string
+{
+    if ($value === null) {
+        return null;
+    }
+
+    $cleaned = preg_replace('/\\s+/', '', $value);
+
+    return $cleaned === '' ? null : $cleaned;
+}
+
 function backend_env_config(): array
 {
     $config = [];
@@ -92,17 +103,20 @@ function backend_env_config(): array
 
     foreach ($map as $key => $name) {
         $value = backend_env($name);
-        if ($value !== null) {
-            $config[$key] = $value;
+        if ($value === null) {
+            continue;
         }
+        $config[$key] = in_array($key, ['auth_lookup_url', 'public_base_url'], true)
+            ? backend_clean_url($value)
+            : $value;
     }
 
-    $origins = backend_env('CHAT_ALLOWED_ORIGINS');
+    $origins = backend_clean_url(backend_env('CHAT_ALLOWED_ORIGINS'));
     if ($origins !== null) {
         $config['allowed_origins'] = array_values(
             array_filter(
                 array_map(
-                    static fn (string $origin): string => rtrim(trim($origin), '/'),
+                    static fn (string $origin): string => rtrim($origin, '/'),
                     explode(',', $origins)
                 ),
                 static fn (string $origin): bool => $origin !== ''

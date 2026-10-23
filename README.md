@@ -59,8 +59,10 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
 ```
 
 `VITE_FIREBASE_STORAGE_BUCKET` automatically enables the Firebase Storage
-adapter. Without it, text chat still works and upload buttons show a clear
-"storage not configured" message — nothing is silently faked.
+adapter. Without it, the app runs in **text-only mode**: text chat works fully,
+while the Voice Pack tab, photo attachments and profile-photo upload stay
+hidden. Nothing is silently faked, and you can re-enable media later with either
+Firebase Storage or the HTTP uploader below.
 
 ## 4. Deploy security rules
 

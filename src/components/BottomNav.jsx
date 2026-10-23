@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Mic, MessageSquareText, UserRound } from "lucide-react";
+import { isStorageConfigured } from "../config/env";
 import { cn } from "../utils/cn";
 
 const ITEMS = [
@@ -9,13 +10,17 @@ const ITEMS = [
 ];
 
 export function BottomNav() {
+    const items = isStorageConfigured
+        ? ITEMS
+        : ITEMS.filter((item) => item.to !== "/voice");
+
     return (
         <nav
             className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-line bg-card/95 backdrop-blur"
             aria-label="Main navigation"
         >
             <div className="mx-auto flex w-full max-w-[760px] items-stretch">
-                {ITEMS.map(({ to, label, icon: Icon, end }) => (
+                {items.map(({ to, label, icon: Icon, end }) => (
                     <NavLink
                         key={to}
                         to={to}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Pencil, Reply, Send, Smile, X } from "lucide-react";
 import { EmojiPicker } from "./EmojiPicker";
 import { limits } from "../config/app";
+import { isStorageConfigured } from "../config/env";
 
 export function MessageComposer({
     value,
@@ -81,22 +82,26 @@ export function MessageComposer({
             ) : null}
 
             <div className="relative flex items-end gap-1">
-                <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleFile}
-                />
-                <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-muted hover:bg-bg hover:text-accent"
-                    aria-label="Send a photo"
-                    disabled={disabled}
-                >
-                    <ImagePlus className="size-5" />
-                </button>
+                {isStorageConfigured ? (
+                    <>
+                        <input
+                            ref={fileRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleFile}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => fileRef.current?.click()}
+                            className="mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-muted hover:bg-bg hover:text-accent"
+                            aria-label="Send a photo"
+                            disabled={disabled}
+                        >
+                            <ImagePlus className="size-5" />
+                        </button>
+                    </>
+                ) : null}
 
                 <div className="relative mb-0.5">
                     <button

@@ -3,7 +3,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ProtectedLayout, TabLayout } from "./components/Layouts";
-import { isFirebaseConfigured } from "./config/env";
+import { isFirebaseConfigured, isStorageConfigured } from "./config/env";
 import SetupPage from "./pages/SetupPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -35,11 +35,15 @@ export default function App() {
                             <Route element={<ProtectedLayout />}>
                                 <Route element={<TabLayout />}>
                                     <Route path="/" element={<HomePage />} />
-                                    <Route path="/voice" element={<VoicePackPage />} />
+                                    {isStorageConfigured ? (
+                                        <Route path="/voice" element={<VoicePackPage />} />
+                                    ) : null}
                                     <Route path="/profile" element={<ProfilePage />} />
                                 </Route>
                                 <Route path="/chat/:uid" element={<ChatPage />} />
-                                <Route path="/voice/:uid" element={<VoiceChatPage />} />
+                                {isStorageConfigured ? (
+                                    <Route path="/voice/:uid" element={<VoiceChatPage />} />
+                                ) : null}
                             </Route>
                             <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>

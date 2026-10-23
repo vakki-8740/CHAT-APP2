@@ -9,6 +9,7 @@ import { Spinner } from "../components/LoadingScreen";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { userService } from "../services/userService";
+import { isStorageConfigured } from "../config/env";
 import { storageStatus, uploadFile } from "../services/storageAdapter";
 import { validateDisplayName, validateBio, validateFile } from "../utils/validation";
 import { limits } from "../config/app";
@@ -129,30 +130,34 @@ export default function ProfilePage() {
                                     size="xl"
                                     className="rounded-full ring-4 ring-card"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => photoRef.current?.click()}
-                                    disabled={photoUploading}
-                                    className="absolute bottom-0 right-0 flex size-8 items-center justify-center rounded-full border-2 border-card bg-accent text-white disabled:opacity-60"
-                                    aria-label="Change profile photo"
-                                >
-                                    {photoUploading ? (
-                                        <Spinner className="size-3.5" />
-                                    ) : (
-                                        <Camera className="size-4" />
-                                    )}
-                                </button>
-                                <input
-                                    ref={photoRef}
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(event) => {
-                                        const file = event.target.files?.[0];
-                                        event.target.value = "";
-                                        if (file) handlePhoto(file);
-                                    }}
-                                />
+                                {isStorageConfigured ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => photoRef.current?.click()}
+                                            disabled={photoUploading}
+                                            className="absolute bottom-0 right-0 flex size-8 items-center justify-center rounded-full border-2 border-card bg-accent text-white disabled:opacity-60"
+                                            aria-label="Change profile photo"
+                                        >
+                                            {photoUploading ? (
+                                                <Spinner className="size-3.5" />
+                                            ) : (
+                                                <Camera className="size-4" />
+                                            )}
+                                        </button>
+                                        <input
+                                            ref={photoRef}
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={(event) => {
+                                                const file = event.target.files?.[0];
+                                                event.target.value = "";
+                                                if (file) handlePhoto(file);
+                                            }}
+                                        />
+                                    </>
+                                ) : null}
                             </div>
 
                             {!editing ? (

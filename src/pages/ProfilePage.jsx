@@ -1,17 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, LogOut, Pencil, Phone, X } from "lucide-react";
+import { Camera, KeyRound, LogOut, Pencil, Phone, X } from "lucide-react";
 import { AppHeader } from "../components/AppHeader";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { Avatar } from "../components/Avatar";
 import { Field } from "../components/Field";
+import { PasswordInput } from "../components/PasswordInput";
 import { Spinner } from "../components/LoadingScreen";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { authService } from "../services/authService";
 import { userService } from "../services/userService";
 import { isStorageConfigured } from "../config/env";
 import { storageStatus, uploadFile } from "../services/storageAdapter";
-import { validateDisplayName, validateBio, validateFile } from "../utils/validation";
+import {
+    isValidMobile,
+    normalizeMobile,
+    validateDisplayName,
+    validateBio,
+    validateFile,
+    validatePassword
+} from "../utils/validation";
 import { limits } from "../config/app";
 
 export default function ProfilePage() {
@@ -21,21 +30,42 @@ export default function ProfilePage() {
 
     const [editing, setEditing] = useState(false);
     const [displayName, setDisplayName] = useState(profile?.displayName || "");
+    const [mobileNumber, setMobileNumber] = useState(profile?.mobileNumber || "");
     const [bio, setBio] = useState(profile?.bio || "");
+    const [currentPassword, setCurrentPassword] = useState("");
     const [saving, setSaving] = useState(false);
     const [photoUploading, setPhotoUploading] = useState(false);
     const [error, setError] = useState("");
+    const [passwordOpen, setPasswordOpen] = useState(false);
+    const [passwordCurrent, setPasswordCurrent] = useState("");
+    const [passwordNext, setPasswordNext] = useState("");
+    const [passwordConfirm, setPasswordConfirm] = useState("");
+    const [passwordError, setPasswordError] = useState("");
+    const [passwordSaving, setPasswordSaving] = useState(false);
     const photoRef = useRef(null);
+
+    const mobileChanged =
+        normalizeMobile(mobileNumber) !== normalizeMobile(profile?.mobileNumber || "");
+
+    function resetPasswordForm() {
+        setPasswordCurrent("");
+        setPasswordNext("");
+        setPasswordConfirm("");
+        setPasswordError("");
+    }
 
     useEffect(() => {
         if (editing) return;
         setDisplayName(profile?.displayName || "");
+        setMobileNumber(profile?.mobileNumber || "");
         setBio(profile?.bio || "");
     }, [profile, editing]);
 
     function startEditing() {
         setDisplayName(profile?.displayName || "");
+        setMobileNumber(profile?.mobileNumber || "");
         setBio(profile?.bio || "");
+        setCurrentPassword("");
         setError("");
         setEditing(true);
     }
@@ -43,7 +73,9 @@ export default function ProfilePage() {
     function cancelEditing() {
         setEditing(false);
         setError("");
+        setCurrentPassword("");
         setDisplayName(profile?.displayName || "");
+        setMobileNumber(profile?.mobileNumber || "");
         setBio(profile?.bio || "");
     }
 
@@ -51,6 +83,15 @@ export default function ProfilePage() {
         const nameError = validateDisplayName(displayName);
         if (nameError) {
             setError(nameError);
+            return;
+        }
+        const nextMobile = normalizeMobile(mobileNumber);
+        if (mobileChanged && !isValidMobile(nextMobile)) {
+            setError("Enter a valid mobile number (7–15 digits).");
+            return;
+        }
+        if (mobileChanged && !currentPassword) {
+            setError("Enter your current password to change the mobile number.");
             return;
         }
         const bioError = validateBio(bio);
@@ -62,11 +103,19 @@ export default function ProfilePage() {
         setSaving(true);
         setError("");
         try {
+            if (mobileChanged) {
+                await authService.changeMobileNumber({
+                    uid,
+                    newMobileNumber: nextMobile,
+                    currentPassword
+                });
+            }
             await userService.updateProfile(uid, {
                 displayName: displayName.trim(),
                 bio: bio.trim()
             });
-            toast.success("Profile updated.");
+            setCurrentPassword("");
+            toast.success(mobileChanged ? "Profile and mobile number updated." : "Profile updated.");
             setEditing(false);
         } catch (nextError) {
             setError(nextError.message || "Could not save your profile.");
@@ -74,6 +123,43 @@ export default function ProfilePage() {
         } finally {
             setSaving(false);
         }
+    }
+
+    async function handlePasswordChange() {
+        setPasswordError("");
+        if (!passwordCurrent) {
+            setPasswordError("Enter your current password.");
+            return;
+        }
+        const passwordValidation = validatePassword(passwordNext);
+        if (passwordValidation) {
+            setPasswordError(passwordValidation);
+            return;
+        }
+        if (passwordNext !== passwordConfirm) {
+            setPasswordError("New passwords do not match.");
+            return;
+        }
+
+        setPasswordSaving(true);
+        try {
+            await authService.changePassword({
+                currentPassword: passwordCurrent,
+                newPassword: passwordNext
+            });
+            resetPasswordForm();
+            setPasswordOpen(false);
+            toast.success("Password changed.");
+        } catch (nextError) {
+            setPasswordError(nextError.message || "Could not change the password.");
+        } finally {
+            setPasswordSaving(false);
+        }
+    }
+
+    function togglePasswordForm() {
+        resetPasswordForm();
+        setPasswordOpen((open) => !open);
     }
 
     async function handlePhoto(file) {
@@ -202,6 +288,30 @@ export default function ProfilePage() {
                                 maxLength={limits.displayNameMaxLength}
                                 placeholder="Your display name"
                             />
+                            <div className="space-y-4">
+                                <Field
+                                    label="Mobile number"
+                                    type="tel"
+                                    inputMode="numeric"
+                                    autoComplete="tel"
+                                    value={mobileNumber}
+                                    onChange={(event) => setMobileNumber(event.target.value)}
+                                    placeholder="98765 43210"
+                                    hint="This becomes your login number."
+                                />
+                                {mobileChanged ? (
+                                    <PasswordInput
+                                        label="Current password"
+                                        autoComplete="current-password"
+                                        placeholder="Enter current password"
+                                        value={currentPassword}
+                                        onChange={(event) =>
+                                            setCurrentPassword(event.target.value)
+                                        }
+                                        hint="Required to change your mobile number."
+                                    />
+                                ) : null}
+                            </div>
                             <Field
                                 as="textarea"
                                 label="Bio / About"
@@ -236,6 +346,76 @@ export default function ProfilePage() {
                                 {profile?.bio || "No bio yet. Tap Edit to add a short introduction."}
                             </p>
                         </>
+                    )}
+                </section>
+
+                <section className="panel mt-4 p-4">
+                    {passwordOpen ? (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between gap-2">
+                                <h2 className="text-sm font-bold">Change password</h2>
+                                <button
+                                    type="button"
+                                    onClick={togglePasswordForm}
+                                    className="btn btn-ghost btn-sm"
+                                    disabled={passwordSaving}
+                                >
+                                    <X className="size-3.5" /> Cancel
+                                </button>
+                            </div>
+                            <PasswordInput
+                                label="Current password"
+                                autoComplete="current-password"
+                                placeholder="Enter current password"
+                                value={passwordCurrent}
+                                onChange={(event) => setPasswordCurrent(event.target.value)}
+                            />
+                            <PasswordInput
+                                label="New password"
+                                autoComplete="new-password"
+                                placeholder="At least 8 characters"
+                                value={passwordNext}
+                                onChange={(event) => setPasswordNext(event.target.value)}
+                                hint="Use 8+ characters with a number."
+                            />
+                            <PasswordInput
+                                label="Confirm new password"
+                                autoComplete="new-password"
+                                placeholder="Repeat new password"
+                                value={passwordConfirm}
+                                onChange={(event) => setPasswordConfirm(event.target.value)}
+                            />
+                            {passwordError ? (
+                                <p className="text-xs text-danger" role="alert">
+                                    {passwordError}
+                                </p>
+                            ) : null}
+                            <button
+                                type="button"
+                                className="btn btn-primary btn-full"
+                                onClick={handlePasswordChange}
+                                disabled={passwordSaving}
+                            >
+                                {passwordSaving ? <Spinner className="size-4" /> : null}
+                                {passwordSaving ? "Updating…" : "Update password"}
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h2 className="text-sm font-bold">Password</h2>
+                                <p className="mt-0.5 text-xs text-muted">
+                                    Change your sign-in password.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={togglePasswordForm}
+                                className="btn btn-outline btn-sm"
+                            >
+                                <KeyRound className="size-3.5" /> Change
+                            </button>
+                        </div>
                     )}
                 </section>
 

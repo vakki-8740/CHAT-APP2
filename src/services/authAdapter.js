@@ -33,6 +33,39 @@ function requireConfigured() {
     }
 }
 
+async function reauthenticate(currentPassword) {
+    requireConfigured();
+    const user = auth.currentUser;
+    if (!user?.email) {
+        throw new AppError("auth/no-user", "Your session expired. Sign in again.");
+    }
+    if (!currentPassword) {
+        throw new AppError("validation/current-password", "Enter your current password.");
+    }
+
+    const { EmailAuthProvider, reauthenticateWithCredential } = await import("firebase/auth");
+    try {
+        await reauthenticateWithCredential(
+            user,
+            EmailAuthProvider.credential(user.email, currentPassword)
+        );
+        return user;
+    } catch (error) {
+        const appError = toAppError(error, "Could not verify your password.");
+        if (
+            ["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(
+                appError.code
+            )
+        ) {
+            throw new AppError(
+                "validation/current-password",
+                "Current password is incorrect."
+            );
+        }
+        throw appError;
+    }
+}
+
 const firebaseAdapter = {
     id: "firebase-email-password",
 
@@ -69,6 +102,41 @@ const firebaseAdapter = {
             return { uid: cred.user.uid, mobileNumber: normalizeMobile(mobileNumber) };
         } catch (error) {
             throw toAppError(error, "Could not sign in.");
+        }
+    },
+
+    async changeMobileNumber({ newMobileNumber, currentPassword }) {
+        const user = await reauthenticate(currentPassword);
+        const previousEmail = user.email || "";
+        const nextEmail = internalEmail(newMobileNumber);
+        if (previousEmail === nextEmail) {
+            return { changed: false, previousEmail };
+        }
+
+        const { updateEmail } = await import("firebase/auth");
+        try {
+            await updateEmail(user, nextEmail);
+            await user.getIdToken(true);
+            return { changed: true, previousEmail };
+        } catch (error) {
+            throw toAppError(error, "Could not change the mobile number.");
+        }
+    },
+
+    async restoreMobileNumber(previousEmail) {
+        if (!auth?.currentUser || !previousEmail) return;
+        const { updateEmail } = await import("firebase/auth");
+        await updateEmail(auth.currentUser, previousEmail);
+        await auth.currentUser.getIdToken(true);
+    },
+
+    async changePassword({ currentPassword, newPassword }) {
+        const user = await reauthenticate(currentPassword);
+        const { updatePassword } = await import("firebase/auth");
+        try {
+            await updatePassword(user, newPassword);
+        } catch (error) {
+            throw toAppError(error, "Could not change the password.");
         }
     },
 

@@ -23,8 +23,8 @@ service cloud.firestore {
 
     // ---------------------------------------------------------------
     // Users: any signed-in user can read the directory. Only the owner
-    // can create/update their own profile, and sensitive fields never
-    // change through this rule (mobile number is immutable).
+    // can create/update their own profile. A mobile-number change must
+    // match the Firebase Auth email, so profile and login stay in sync.
     // ---------------------------------------------------------------
     match /users/{uid} {
       allow read: if signedIn();
@@ -40,19 +40,22 @@ service cloud.firestore {
         && request.resource.data.displayName.size() <= 40
         && request.resource.data.mobileNumber is string
         && request.resource.data.mobileNumber.matches('[0-9]{7,15}')
+        && request.auth.token.email == 'm' + request.resource.data.mobileNumber + '@chat.local'
         && request.resource.data.bio is string
         && request.resource.data.bio.size() <= 160
         && request.resource.data.photoURL is string;
 
       allow update: if isSelf(uid)
         && request.resource.data.uid == resource.data.uid
-        && request.resource.data.mobileNumber == resource.data.mobileNumber
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'photoURL', 'bio', 'updatedAt', 'lastSeen'
+          'displayName', 'mobileNumber', 'photoURL', 'bio', 'updatedAt', 'lastSeen'
         ])
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() > 0
         && request.resource.data.displayName.size() <= 40
+        && request.resource.data.mobileNumber is string
+        && request.resource.data.mobileNumber.matches('[0-9]{7,15}')
+        && request.auth.token.email == 'm' + request.resource.data.mobileNumber + '@chat.local'
         && request.resource.data.bio is string
         && request.resource.data.bio.size() <= 160;
 

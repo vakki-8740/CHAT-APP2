@@ -12,7 +12,7 @@ import {
 import { db, isFirebaseConfigured } from "./firebase";
 import { AppError, toAppError } from "./errors";
 import { limits } from "../config/app";
-import { normalizeMobile } from "../utils/validation";
+import { isValidMobile, normalizeMobile } from "../utils/validation";
 
 const USERS = "users";
 
@@ -99,6 +99,22 @@ export const userService = {
             await updateDoc(doc(db, USERS, uid), { ...clean, updatedAt: serverTimestamp() });
         } catch (error) {
             throw toAppError(error, "Could not save profile.");
+        }
+    },
+
+    async updateMobileNumber(uid, mobileNumber) {
+        requireDb();
+        const mobile = normalizeMobile(mobileNumber);
+        if (!isValidMobile(mobile)) {
+            throw new AppError("validation/mobile", "Enter a valid mobile number.");
+        }
+        try {
+            await updateDoc(doc(db, USERS, uid), {
+                mobileNumber: mobile,
+                updatedAt: serverTimestamp()
+            });
+        } catch (error) {
+            throw toAppError(error, "Could not update the mobile number.");
         }
     },
 

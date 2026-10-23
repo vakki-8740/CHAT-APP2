@@ -55,6 +55,53 @@ export const authService = {
         return profile;
     },
 
+    async changeMobileNumber({ uid, newMobileNumber, currentPassword }) {
+        const nextMobile = normalizeMobile(newMobileNumber);
+        if (!isValidMobile(nextMobile))
+            throw new AppError("validation/mobile", "Enter a valid mobile number.");
+
+        const profile = await userService.getProfile(uid);
+        if (!profile) {
+            throw new AppError("profile/missing", "Your profile could not be found.");
+        }
+        if (normalizeMobile(profile.mobileNumber) === nextMobile) return profile;
+
+        const { changed, previousEmail } = await authAdapter.changeMobileNumber({
+            newMobileNumber: nextMobile,
+            currentPassword
+        });
+
+        try {
+            await userService.updateMobileNumber(uid, nextMobile);
+            return { ...profile, mobileNumber: nextMobile };
+        } catch (error) {
+            if (changed) {
+                await authAdapter.restoreMobileNumber(previousEmail).catch(() => {});
+            }
+            throw error instanceof AppError
+                ? error
+                : toAppError(error, "Could not update the mobile number.");
+        }
+    },
+
+    async changePassword({ currentPassword, newPassword }) {
+        if (!currentPassword) {
+            throw new AppError(
+                "validation/current-password",
+                "Enter your current password."
+            );
+        }
+        const passwordError = validatePassword(newPassword);
+        if (passwordError) throw new AppError("validation/password", passwordError);
+        if (newPassword === currentPassword) {
+            throw new AppError(
+                "validation/password",
+                "New password must be different from the current password."
+            );
+        }
+        await authAdapter.changePassword({ currentPassword, newPassword });
+    },
+
     logout() {
         return authAdapter.logout();
     },

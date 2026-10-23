@@ -30,7 +30,7 @@ export default function VoiceChatPage() {
 
     const [peer, setPeer] = useState(null);
     const [peerError, setPeerError] = useState("");
-    const { messages, loading, error, retry } = useThread(voiceService, uid, peerUid);
+    const { chat, messages, loading, error, retry } = useThread(voiceService, uid, peerUid);
 
     const [replyTo, setReplyTo] = useState(null);
     const [menuMessage, setMenuMessage] = useState(null);
@@ -173,7 +173,8 @@ export default function VoiceChatPage() {
                 type: "voice",
                 audioUrl,
                 duration: message.duration,
-                replyTo: message.replyTo
+                replyTo: message.replyTo,
+                chatExists: Boolean(chat)
             });
             setPending((list) =>
                 list.map((item) => (item.id === id ? { ...item, status: "sent" } : item))

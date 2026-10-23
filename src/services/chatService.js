@@ -3,8 +3,8 @@ import {
     doc,
     getDoc,
     getDocs,
-    setDoc,
     updateDoc,
+    writeBatch,
     runTransaction,
     onSnapshot,
     query,
@@ -164,7 +164,8 @@ export function createThreadService(collectionName) {
             imageUrl = "",
             audioUrl = "",
             duration = 0,
-            replyTo = null
+            replyTo = null,
+            chatExists = false
         }) {
             requireDb();
             const value = String(text || "").trim();
@@ -180,13 +181,14 @@ export function createThreadService(collectionName) {
             if (type === "voice" && !audioUrl)
                 throw new AppError("validation/message", "Voice URL is missing.");
 
-            await this.ensureChat(uid, otherUid);
+            if (!chatExists) await this.ensureChat(uid, otherUid);
             const chatId = makeChatId(uid, otherUid);
             const id = messageId || this.newMessageId(uid, otherUid);
             const preview = previewForMessage(type, value);
 
             try {
-                await setDoc(messageRef(chatId, id), {
+                const batch = writeBatch(db);
+                batch.set(messageRef(chatId, id), {
                     senderId: uid,
                     type,
                     text: value,
@@ -206,7 +208,7 @@ export function createThreadService(collectionName) {
                     deletedForEveryone: false,
                     createdAt: serverTimestamp()
                 });
-                await updateDoc(chatRef(uid, otherUid), {
+                batch.update(chatRef(uid, otherUid), {
                     lastMessage: {
                         id,
                         type,
@@ -219,6 +221,7 @@ export function createThreadService(collectionName) {
                     updatedAt: serverTimestamp(),
                     [`unread.${otherUid}`]: increment(1)
                 });
+                await batch.commit();
                 return id;
             } catch (error) {
                 throw toAppError(error, "Could not send the message.");

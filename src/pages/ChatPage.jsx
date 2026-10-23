@@ -28,7 +28,7 @@ export default function ChatPage() {
 
     const [peer, setPeer] = useState(null);
     const [peerError, setPeerError] = useState("");
-    const { messages, loading, error, retry } = useThread(chatService, uid, peerUid);
+    const { chat, messages, loading, error, retry } = useThread(chatService, uid, peerUid);
 
     const [draft, setDraft] = useState("");
     const [replyTo, setReplyTo] = useState(null);
@@ -118,8 +118,9 @@ export default function ChatPage() {
     async function deliver(message) {
         setPending((list) => [
             ...list.filter((item) => item.id !== message.id),
-            { ...message, status: message.status || "sending" }
+            { ...message, status: "sent" }
         ]);
+        playSound("messageSent");
         try {
             await chatService.sendMessage({
                 uid,
@@ -128,14 +129,9 @@ export default function ChatPage() {
                 type: message.type,
                 text: message.text,
                 imageUrl: message.imageUrl,
-                replyTo: message.replyTo
+                replyTo: message.replyTo,
+                chatExists: Boolean(chat)
             });
-            playSound("messageSent");
-            setPending((list) =>
-                list.map((item) =>
-                    item.id === message.id ? { ...item, status: "sent" } : item
-                )
-            );
             return true;
         } catch (nextError) {
             setPending((list) =>

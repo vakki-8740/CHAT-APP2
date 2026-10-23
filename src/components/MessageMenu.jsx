@@ -55,15 +55,15 @@ export function MessageMenu({
                 </div>
 
                 {!deleted ? (
-                    <div className="border-b border-line px-3 py-3">
-                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                    <div className="border-b border-line py-3">
+                        <div className="scrollbar-thin flex snap-x flex-nowrap items-center gap-1 overflow-x-auto overscroll-x-contain px-3 pb-1 select-none">
                             {REACTION_PALETTE.map((emoji) => (
                                 <button
                                     key={emoji}
                                     type="button"
                                     onClick={() => onReact(currentReaction === emoji ? "" : emoji)}
                                     className={cn(
-                                        "flex size-10 items-center justify-center rounded-full text-xl transition-transform hover:scale-110",
+                                        "flex size-10 shrink-0 snap-start items-center justify-center rounded-full text-xl transition-transform hover:scale-110",
                                         currentReaction === emoji
                                             ? "bg-accent-soft ring-1 ring-accent"
                                             : "hover:bg-bg"

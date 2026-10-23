@@ -27,16 +27,43 @@ async function uploadViaHttp(file, { folder }) {
     const form = new FormData();
     form.append("file", file);
     form.append("folder", folder);
-    const headers = {};
-    if (env.storage.uploadToken) headers.Authorization = `Bearer ${env.storage.uploadToken}`;
 
-    const res = await fetch(env.storage.uploadEndpoint, {
-        method: "POST",
-        headers,
-        body: form
-    });
-    if (!res.ok) throw new AppError("storage/upload-failed", "Upload failed.");
+    const headers = { Accept: "application/json" };
+    if (env.storage.uploadToken) {
+        headers.Authorization = `Bearer ${env.storage.uploadToken}`;
+    } else {
+        const { auth } = await import("./firebase");
+        const token = await auth?.currentUser?.getIdToken().catch(() => null);
+        if (!token) {
+            throw new AppError(
+                "storage/not-authenticated",
+                "Your session expired. Sign in again to upload files."
+            );
+        }
+        headers.Authorization = `Bearer ${token}`;
+    }
+
+    let res;
+    try {
+        res = await fetch(env.storage.uploadEndpoint, {
+            method: "POST",
+            headers,
+            body: form
+        });
+    } catch (error) {
+        throw new AppError(
+            "storage/network",
+            "Could not reach the upload server. Check the backend URL and CORS.",
+            error
+        );
+    }
     const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new AppError(
+            "storage/upload-failed",
+            data?.error || `Upload failed (${res.status}).`
+        );
+    }
     if (!data.url)
         throw new AppError("storage/bad-response", "Upload endpoint did not return a url.");
     return { url: data.url, storagePath: data.path || "" };

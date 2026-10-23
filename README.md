@@ -1,7 +1,8 @@
 # Personal Chat
 
 A mobile-first personal chat web app built with React + Vite + Tailwind CSS and
-Firebase (Authentication + Cloud Firestore + optional Storage). The UI follows
+Firebase (Authentication + Cloud Firestore), with optional Firebase Storage or
+a separate PHP media backend for images/voice notes. The UI follows
 the **OWN LABRARY** design tokens (accent `#4f6bed`, 6px radii, iOS-like
 spacing/typography, light + dark theme).
 
@@ -36,9 +37,9 @@ npm install
 2. **Authentication → Sign-in method → Email/Password → Enable.**
 3. **Firestore Database → Create database** (production mode is fine, rules are
    provided below).
-4. **Storage → Get started** (needed for images, voice notes and profile
-   photos). If your plan does not include Storage, use the HTTP uploader
-   described in section 5.
+4. **Storage → Get started** (optional; needed only for Firebase-hosted
+   images/voice notes). If Storage is not available on your plan, use the PHP
+   backend described in section 5 instead.
 5. **Project settings → Your apps → Web** and copy the config values.
 
 ## 3. Environment file
@@ -70,15 +71,17 @@ Firebase Storage or the HTTP uploader below.
 npm install -g firebase-tools
 firebase login
 firebase use --add          # select your project
-firebase deploy --only firestore:rules,storage
+firebase deploy --only firestore:rules
+# add ",storage" only if Firebase Storage is enabled
 ```
 
 Rules in this repo:
 
 - `firestore.rules` — signed-in only, owner-only profiles, participants-only
   chats (both `chats` and `voiceChats`), sender-only edits/deletes.
-- `storage.rules` — uploads restricted to the signed-in user, size/MIME limits,
-  chat files only readable by the two participants encoded in the chat id.
+- `storage.rules` — optional; uploads restricted to the signed-in user,
+  size/MIME limits, chat files only readable by the two participants encoded in
+  the chat id.
 
 ## 5. Storage adapter (optional HTTP uploader)
 
@@ -100,6 +103,23 @@ return JSON:
 ```json
 { "url": "https://cdn.example/file.webp", "path": "chatImages/uidA_uidB/file.webp" }
 ```
+
+### Bundled PHP backend
+
+If Firebase Storage is not available, use the ready-made backend in
+[`backend-php/`](backend-php/README.md). It runs on any PHP 8 host, can be
+hosted on a different domain from the frontend, validates Firebase ID tokens,
+checks chat participants, and serves files through signed URLs.
+
+```env
+VITE_STORAGE_PROVIDER=http
+VITE_UPLOAD_ENDPOINT=https://api.your-domain.com/upload.php
+# VITE_UPLOAD_TOKEN stays empty for the bundled backend
+```
+
+Deploy the PHP backend separately; see its README for the document root, CORS,
+storage permissions and configuration. No Firebase Storage/Blaze plan is
+required.
 
 ## 6. Run
 
@@ -167,15 +187,18 @@ Production builds **refuse to compile** with demo/emulator values. This includes
    firebase login
    firebase use --add
    ```
-5. Build and deploy:
+5. For images/voice notes, deploy `backend-php/` to your PHP host and set
+   `VITE_STORAGE_PROVIDER=http` + `VITE_UPLOAD_ENDPOINT` in `.env` before
+   building. See [`backend-php/README.md`](backend-php/README.md).
+6. Build and deploy:
    ```bash
    npm run build
-   firebase deploy --only firestore:rules,storage,hosting
+   firebase deploy --only firestore:rules,hosting
    ```
-   Omit `storage` from `--only` if Storage is not enabled.
-6. In **Authentication → Settings → Authorized domains**, add the Hosting domain
+   Add `storage` to `--only` only if Firebase Storage is enabled.
+7. In **Authentication → Settings → Authorized domains**, add the Hosting domain
    (`<project>.web.app` / your custom domain).
-7. To return to local emulator testing:
+8. To return to local emulator testing:
    ```bash
    mv .env.local.testing .env.local
    ```

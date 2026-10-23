@@ -11,3 +11,8 @@ dist-ssr
 coverage
 
 .firebaserc
+
+backend-php/config.php
+backend-php/storage/*
+!backend-php/storage/.htaccess
+!backend-php/storage/.gitkeep

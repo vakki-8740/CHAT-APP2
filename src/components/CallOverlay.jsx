@@ -124,16 +124,12 @@ function IncomingCallModal() {
                 </p>
 
                 <div className="mt-7 flex justify-center">
-                    <span className="relative flex items-center justify-center">
-                        <span className="absolute size-28 animate-pulse rounded-full bg-white/10" />
-                        <Avatar
-                            name={incomingCall.callerName}
-                            src={incomingCall.callerPhotoURL}
-                            uid={incomingCall.callerId}
-                            size="xl"
-                            className="relative ring-4 ring-white/10"
-                        />
-                    </span>
+                    <Avatar
+                        name={incomingCall.callerName}
+                        src={incomingCall.callerPhotoURL}
+                        uid={incomingCall.callerId}
+                        size="xl"
+                    />
                 </div>
 
                 <h2 className="mt-5 truncate text-2xl font-bold">
@@ -196,29 +192,18 @@ function ActiveCallOverlay() {
 
     const isVideo = activeCall.type === "video";
     const connected = activeCall.status === "connected";
-    const connecting =
-        activeCall.status === "ringing" || activeCall.status === "connecting";
 
     if (!isVideo) {
         return (
             <div className="fixed inset-0 z-[100] flex flex-col bg-[#0f1420] text-white">
                 <StreamAudio stream={activeCall.remoteStream} />
                 <div className="safe-top flex flex-1 flex-col items-center justify-center px-6">
-                    <span className="relative flex items-center justify-center">
-                        <span
-                            className={cn(
-                                "absolute size-40 rounded-full bg-white/5",
-                                connecting ? "animate-pulse" : ""
-                            )}
-                        />
-                        <Avatar
-                            name={activeCall.peer.name}
-                            src={activeCall.peer.photoURL}
-                            uid={activeCall.peer.uid}
-                            size="xl"
-                            className="relative ring-4 ring-white/10"
-                        />
-                    </span>
+                    <Avatar
+                        name={activeCall.peer.name}
+                        src={activeCall.peer.photoURL}
+                        uid={activeCall.peer.uid}
+                        size="xl"
+                    />
                     <h1 className="mt-6 max-w-full truncate text-2xl font-bold">
                         {activeCall.peer.name}
                     </h1>
@@ -266,7 +251,6 @@ function ActiveCallOverlay() {
                         src={activeCall.peer.photoURL}
                         uid={activeCall.peer.uid}
                         size="xl"
-                        className="ring-4 ring-white/10"
                     />
                     <p className="text-sm text-white/60">{statusText(activeCall)}</p>
                 </div>

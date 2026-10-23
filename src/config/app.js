@@ -1,7 +1,7 @@
 // Branding placeholders. The project owner supplies the real logo + name later.
 export const branding = {
     name: import.meta.env.VITE_APP_NAME?.trim() || "Personal Chat",
-    logoUrl: import.meta.env.VITE_APP_LOGO_URL?.trim() || "/logo-mark.png"
+    logoUrl: import.meta.env.VITE_APP_LOGO_URL?.trim() || "/logo-mark.svg"
 };
 
 // Limits used across chat + voice pack.

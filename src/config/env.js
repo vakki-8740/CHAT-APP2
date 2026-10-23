@@ -1,0 +1,42 @@
+function read(key, fallback = "") {
+    const value = import.meta.env[key];
+    return typeof value === "string" ? value.trim() : fallback;
+}
+
+const storageProvider = read("VITE_STORAGE_PROVIDER");
+
+export const env = {
+    firebase: {
+        apiKey: read("VITE_FIREBASE_API_KEY"),
+        authDomain: read("VITE_FIREBASE_AUTH_DOMAIN"),
+        projectId: read("VITE_FIREBASE_PROJECT_ID"),
+        appId: read("VITE_FIREBASE_APP_ID"),
+        messagingSenderId: read("VITE_FIREBASE_MESSAGING_SENDER_ID"),
+        storageBucket: read("VITE_FIREBASE_STORAGE_BUCKET")
+    },
+    storage: {
+        // Falls back to Firebase Storage when a bucket is supplied.
+        provider:
+            storageProvider || (read("VITE_FIREBASE_STORAGE_BUCKET") ? "firebase" : ""),
+        uploadEndpoint: read("VITE_UPLOAD_ENDPOINT"),
+        uploadToken: read("VITE_UPLOAD_TOKEN")
+    }
+};
+
+export const isFirebaseConfigured = Boolean(
+    env.firebase.apiKey && env.firebase.projectId && env.firebase.appId
+);
+
+export const emulator = {
+    enabled:
+        read("VITE_USE_FIREBASE_EMULATORS") === "true" ||
+        env.firebase.projectId.startsWith("demo-"),
+    host: read("VITE_EMULATOR_HOST", "127.0.0.1") || "127.0.0.1",
+    authPort: 9099,
+    firestorePort: 8080,
+    storagePort: 9199
+};
+
+export const isStorageConfigured =
+    (env.storage.provider === "http" && Boolean(env.storage.uploadEndpoint)) ||
+    (env.storage.provider === "firebase" && Boolean(env.firebase.storageBucket));

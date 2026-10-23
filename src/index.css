@@ -1,0 +1,287 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ------------------------------------------------------------------
+   Design tokens ported from "OWN LABRARY" (lib/viewer.css + components)
+   Keep these values in sync with the library design language.
+------------------------------------------------------------------ */
+:root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1f2430;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+    --accent: #4f6bed;
+    --accent-soft: rgba(79, 107, 237, 0.1);
+    --yes: #22a06b;
+    --no: #e5484d;
+    --warn: #c2740a;
+    --bubble-in: #ffffff;
+    --bubble-out: #4f6bed;
+    --bubble-out-text: #ffffff;
+
+    --bg-rgb: 244 245 247;
+    --card-rgb: 255 255 255;
+    --text-rgb: 31 36 48;
+    --muted-rgb: 107 114 128;
+    --border-rgb: 229 231 235;
+    --accent-rgb: 79 107 237;
+    --yes-rgb: 34 160 107;
+    --no-rgb: 229 72 77;
+    --warn-rgb: 194 116 10;
+}
+
+[data-theme="dark"] {
+    --bg: #12141a;
+    --card: #1c1f28;
+    --text: #eceef3;
+    --muted: #9aa1b2;
+    --border: #2a2e3a;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    --accent: #7b92ff;
+    --accent-soft: rgba(123, 146, 255, 0.14);
+    --bubble-in: #232733;
+    --bubble-out: #4f6bed;
+    --bubble-out-text: #ffffff;
+
+    --bg-rgb: 18 20 26;
+    --card-rgb: 28 31 40;
+    --text-rgb: 236 238 243;
+    --muted-rgb: 154 161 178;
+    --border-rgb: 42 46 58;
+    --accent-rgb: 123 146 255;
+    --yes-rgb: 34 160 107;
+    --no-rgb: 229 72 77;
+    --warn-rgb: 194 116 10;
+}
+
+@layer base {
+    * {
+        box-sizing: border-box;
+    }
+
+    html,
+    body,
+    #root {
+        height: 100%;
+    }
+
+    body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-size: 15px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        transition: background 0.3s, color 0.3s;
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    input,
+    textarea,
+    button,
+    select {
+        font: inherit;
+    }
+}
+
+@layer components {
+    /* Buttons — ported from buttons/button.html */
+    .btn {
+        @apply inline-flex items-center justify-center gap-[7px] rounded-[6px] border border-transparent px-5 py-2.5 text-base font-semibold leading-none cursor-pointer;
+        transition: transform 0.15s, opacity 0.2s, background 0.2s, border-color 0.2s, color 0.2s;
+    }
+    .btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        opacity: 0.94;
+    }
+    .btn:active:not(:disabled) {
+        transform: translateY(0);
+    }
+    .btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+    .btn-primary {
+        background: var(--accent);
+        color: #fff;
+    }
+    .btn-secondary {
+        background: var(--bg);
+        border-color: var(--border);
+        color: var(--text);
+    }
+    .btn-outline {
+        background: transparent;
+        border-color: var(--border);
+        color: var(--text);
+    }
+    .btn-outline:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+    .btn-ghost {
+        background: transparent;
+        color: var(--accent);
+    }
+    .btn-ghost:hover:not(:disabled) {
+        background: var(--bg);
+    }
+    .btn-danger {
+        background: var(--no);
+        color: #fff;
+    }
+    .btn-success {
+        background: var(--yes);
+        color: #fff;
+    }
+    .btn-sm {
+        @apply px-3.5 py-1.5 text-sm;
+    }
+    .btn-lg {
+        @apply px-7 py-3.5 text-base;
+    }
+    .btn-full {
+        @apply w-full;
+    }
+
+    /* Inputs — ported from forms/inputs.html */
+    .input {
+        @apply h-11 w-full rounded-[6px] border px-[13px] text-base outline-none;
+        border-color: var(--border);
+        background: var(--card);
+        color: var(--text);
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+    .input::placeholder {
+        color: var(--muted);
+        opacity: 0.85;
+    }
+    .input:hover:not(:disabled) {
+        border-color: var(--muted);
+    }
+    .input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .input:disabled {
+        background: var(--bg);
+        color: var(--muted);
+        cursor: not-allowed;
+    }
+    .textarea {
+        @apply min-h-[44px] py-2.5 leading-snug;
+        resize: none;
+    }
+    .field-label {
+        @apply mb-1.5 block text-sm font-semibold;
+        color: var(--muted);
+    }
+    .field-error {
+        @apply text-xs text-danger;
+    }
+
+    /* Panel / card — ported from layout + cards */
+    .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        box-shadow: var(--shadow);
+    }
+
+    .surface {
+        background: var(--card);
+        border: 1px solid var(--border);
+    }
+
+    .safe-bottom {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .safe-top {
+        padding-top: env(safe-area-inset-top, 0px);
+    }
+}
+
+.scrollbar-thin {
+    scrollbar-width: thin;
+}
+.scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.animate-fade-in {
+    animation: fade-in 0.18s ease-out;
+}
+
+@keyframes pulse-rec {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.35;
+    }
+}
+.animate-rec {
+    animation: pulse-rec 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.001ms !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+
+/* ------------------------------------------------------------------
+   App shell (mobile-first, centred on larger screens)
+------------------------------------------------------------------ */
+.app-frame {
+    position: relative;
+    width: 100%;
+    max-width: 760px;
+    min-height: 100dvh;
+    margin: 0 auto;
+    background: var(--bg);
+    color: var(--text);
+}
+
+@media (min-width: 800px) {
+    .app-frame {
+        border-left: 1px solid var(--border);
+        border-right: 1px solid var(--border);
+        box-shadow: 0 0 60px rgba(0, 0, 0, 0.06);
+    }
+}
+
+/* Scrollable chat thread keeps the composer pinned. */
+.chat-scroll {
+    scrollbar-gutter: stable;
+}
+
+/* Keep long words inside message bubbles. */
+.chat-bubble-text {
+    overflow-wrap: anywhere;
+}

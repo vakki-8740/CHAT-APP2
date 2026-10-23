@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Chat ids are "<uidA>_<uidB>" (Firebase uids never contain "_").
+    function inThread(chatId) {
+      return signedIn() && chatId.split('_').hasAny([request.auth.uid]);
+    }
+
+    // Profile photos: any signed-in user can view, only the owner writes.
+    match /avatars/{uid}/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Images shared inside a private text chat.
+    match /chatImages/{chatId}/{fileName} {
+      allow read: if inThread(chatId);
+      allow write: if inThread(chatId)
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Voice notes shared inside a private Voice Pack chat.
+    match /voiceNotes/{chatId}/{fileName} {
+      allow read: if inThread(chatId);
+      allow write: if inThread(chatId)
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('audio/.*');
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,300 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validParticipants(data) {
+      return data.participants is list
+        && data.participants.size() == 2
+        && data.participants[0] != data.participants[1];
+    }
+
+    function isParticipant(data) {
+      return signedIn() && request.auth.uid in data.participants;
+    }
+
+    // ---------------------------------------------------------------
+    // Users: any signed-in user can read the directory. Only the owner
+    // can create/update their own profile. A mobile-number change must
+    // match the Firebase Auth email, so profile and login stay in sync.
+    // ---------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if signedIn();
+
+      allow create: if isSelf(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.keys().hasOnly([
+          'uid', 'displayName', 'mobileNumber', 'photoURL', 'bio',
+          'createdAt', 'updatedAt', 'lastSeen'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 40
+        && request.resource.data.mobileNumber is string
+        && request.resource.data.mobileNumber.matches('[0-9]{7,15}')
+        && request.auth.token.email == 'm' + request.resource.data.mobileNumber + '@chat.local'
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 160
+        && request.resource.data.photoURL is string;
+
+      allow update: if isSelf(uid)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'mobileNumber', 'photoURL', 'bio', 'updatedAt', 'lastSeen'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 40
+        && request.resource.data.mobileNumber is string
+        && request.resource.data.mobileNumber.matches('[0-9]{7,15}')
+        && request.auth.token.email == 'm' + request.resource.data.mobileNumber + '@chat.local'
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 160;
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // Text chats. Only the two participants can read or update a thread.
+    // ---------------------------------------------------------------
+    match /chats/{chatId} {
+      // Individual reads must also succeed when the thread does not exist yet
+      // (find-or-create / reset-unread flows). A missing document exposes no
+      // data, so it is safe for any signed-in user.
+      allow get: if signedIn() && (resource == null || isParticipant(resource.data));
+      allow list: if isParticipant(resource.data);
+
+      allow create: if signedIn()
+        && validParticipants(request.resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.keys().hasOnly([
+          'participants', 'lastMessage', 'unread', 'createdAt', 'updatedAt'
+        ]);
+
+      allow update: if isParticipant(resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage', 'unread', 'updatedAt'
+        ]);
+
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        function parentThread() {
+          return get(/databases/$(database)/documents/chats/$(chatId));
+        }
+
+        // The parent thread may not exist yet while the page is mounting.
+        // An empty subcollection exposes no data, so allow that read.
+        allow read: if signedIn()
+          && (parentThread() == null
+            || request.auth.uid in parentThread().data.participants);
+
+        allow create: if signedIn()
+          && request.auth.uid in parentThread().data.participants
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.type in ['text', 'image']
+          && request.resource.data.keys().hasOnly([
+            'senderId', 'type', 'text', 'imageUrl', 'audioUrl', 'duration',
+            'replyTo', 'reactions', 'hiddenFor', 'deletedForEveryone', 'createdAt'
+          ])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 4000
+          && (request.resource.data.replyTo == null || request.resource.data.replyTo is map)
+          && request.resource.data.deletedForEveryone == false;
+
+        allow update: if signedIn()
+          && request.auth.uid in parentThread().data.participants
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 4000
+          && (
+            (
+              resource.data.senderId == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'text', 'imageUrl', 'audioUrl', 'duration', 'editedAt',
+                'deletedForEveryone', 'reactions', 'hiddenFor'
+              ])
+            )
+            || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'reactions', 'hiddenFor'
+            ])
+          );
+
+        allow delete: if false;
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Voice Pack chats use their own collection so their messages,
+    // previews and unread counts never mix with text chats.
+    // ---------------------------------------------------------------
+    match /voiceChats/{chatId} {
+      allow get: if signedIn() && (resource == null || isParticipant(resource.data));
+      allow list: if isParticipant(resource.data);
+
+      allow create: if signedIn()
+        && validParticipants(request.resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.keys().hasOnly([
+          'participants', 'lastMessage', 'unread', 'createdAt', 'updatedAt'
+        ]);
+
+      allow update: if isParticipant(resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage', 'unread', 'updatedAt'
+        ]);
+
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        function parentThread() {
+          return get(/databases/$(database)/documents/voiceChats/$(chatId));
+        }
+
+        allow read: if signedIn()
+          && (parentThread() == null
+            || request.auth.uid in parentThread().data.participants);
+
+        allow create: if signedIn()
+          && request.auth.uid in parentThread().data.participants
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.type == 'voice'
+          && request.resource.data.keys().hasOnly([
+            'senderId', 'type', 'text', 'imageUrl', 'audioUrl', 'duration',
+            'replyTo', 'reactions', 'hiddenFor', 'deletedForEveryone', 'createdAt'
+          ])
+          && request.resource.data.audioUrl is string
+          && (request.resource.data.replyTo == null || request.resource.data.replyTo is map)
+          && request.resource.data.deletedForEveryone == false;
+
+        allow update: if signedIn()
+          && request.auth.uid in parentThread().data.participants
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 4000
+          && (
+            (
+              resource.data.senderId == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'text', 'imageUrl', 'audioUrl', 'duration', 'editedAt',
+                'deletedForEveryone', 'reactions', 'hiddenFor'
+              ])
+            )
+            || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'reactions', 'hiddenFor'
+            ])
+          );
+
+        allow delete: if false;
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // One-to-one voice/video calls. The call document carries the SDP
+    // offer/answer and status; ICE candidates live in subcollections.
+    // ---------------------------------------------------------------
+    match /calls/{callId} {
+      // The incoming-call listener filters by calleeId, so the read rule
+      // must be provable from that query for Firestore's list checks.
+      allow read: if signedIn()
+        && (resource.data.calleeId == request.auth.uid
+          || resource.data.callerId == request.auth.uid);
+
+      allow create: if signedIn()
+        && request.resource.data.callerId == request.auth.uid
+        && request.resource.data.calleeId != request.auth.uid
+        && validParticipants(request.resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.type in ['voice', 'video']
+        && request.resource.data.status == 'ringing'
+        && request.resource.data.offer is map
+        && request.resource.data.answer == null
+        && request.resource.data.callerName is string
+        && request.resource.data.callerName.size() > 0
+        && request.resource.data.callerName.size() <= 80
+        && request.resource.data.callerPhotoURL is string
+        && request.resource.data.keys().hasOnly([
+          'participants', 'chatId', 'callerId', 'calleeId', 'type', 'status',
+          'offer', 'answer', 'callerName', 'callerPhotoURL', 'endedBy',
+          'connectedAt', 'endedAt', 'createdAt', 'updatedAt'
+        ]);
+
+      allow update: if signedIn()
+        && isParticipant(resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.chatId == resource.data.chatId
+        && request.resource.data.callerId == resource.data.callerId
+        && request.resource.data.calleeId == resource.data.calleeId
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.status in [
+          'ringing', 'accepted', 'declined', 'missed', 'cancelled', 'ended',
+          'failed', 'busy'
+        ]
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'answer', 'endedBy', 'connectedAt', 'endedAt', 'updatedAt'
+        ]);
+
+      allow delete: if false;
+
+      match /callerCandidates/{candidateId} {
+        function parentCall() {
+          return get(/databases/$(database)/documents/calls/$(callId));
+        }
+
+        allow read: if signedIn()
+          && request.auth.uid in parentCall().data.participants;
+
+        allow create: if signedIn()
+          && request.auth.uid in parentCall().data.participants
+          && request.resource.data.candidate is string
+          && request.resource.data.candidate.size() <= 4096
+          && request.resource.data.sdpMid is string
+          && (request.resource.data.sdpMLineIndex == null
+            || request.resource.data.sdpMLineIndex is int)
+          && request.resource.data.keys().hasOnly([
+            'candidate', 'sdpMid', 'sdpMLineIndex', 'usernameFragment', 'createdAt'
+          ]);
+
+        allow update, delete: if false;
+      }
+
+      match /calleeCandidates/{candidateId} {
+        function parentCall() {
+          return get(/databases/$(database)/documents/calls/$(callId));
+        }
+
+        allow read: if signedIn()
+          && request.auth.uid in parentCall().data.participants;
+
+        allow create: if signedIn()
+          && request.auth.uid in parentCall().data.participants
+          && request.resource.data.candidate is string
+          && request.resource.data.candidate.size() <= 4096
+          && request.resource.data.sdpMid is string
+          && (request.resource.data.sdpMLineIndex == null
+            || request.resource.data.sdpMLineIndex is int)
+          && request.resource.data.keys().hasOnly([
+            'candidate', 'sdpMid', 'sdpMLineIndex', 'usernameFragment', 'createdAt'
+          ]);
+
+        allow update, delete: if false;
+      }
+    }
+
+    // Everything else is closed by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

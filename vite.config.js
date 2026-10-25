@@ -6,7 +6,9 @@ const API_ROUTES = {
     "/api/video-upload": () => import("./api/video-upload.js"),
     "/api/video-finalize": () => import("./api/video-finalize.js"),
     "/api/video-stream": () => import("./api/video-stream.js"),
-    "/api/video-status": () => import("./api/video-status.js")
+    "/api/video-status": () => import("./api/video-status.js"),
+    "/api/telegram-config": () => import("./api/telegram-config.js"),
+    "/api/telegram-unlock": () => import("./api/telegram-unlock.js")
 };
 
 function localVideoApiPlugin() {

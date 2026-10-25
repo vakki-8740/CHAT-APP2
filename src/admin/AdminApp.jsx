@@ -8,6 +8,8 @@ import {
     Database,
     Download,
     ExternalLink,
+    Eye,
+    EyeOff,
     Film,
     Image as ImageIcon,
     LayoutDashboard,
@@ -17,6 +19,7 @@ import {
     Phone,
     PhoneCall,
     RefreshCw,
+    Send,
     Settings2,
     ShieldAlert,
     ShieldCheck,
@@ -54,7 +57,8 @@ const TABS = [
     { id: "images", label: "Images", icon: ImageIcon },
     { id: "voice", label: "Voice Packs", icon: Mic },
     { id: "videos", label: "Videos", icon: Film },
-    { id: "calls", label: "Calls", icon: PhoneCall }
+    { id: "calls", label: "Calls", icon: PhoneCall },
+    { id: "telegram", label: "Telegram Alert", icon: Send }
 ];
 
 function formatDateTime(value) {
@@ -92,6 +96,312 @@ function triggerMediaDownload(src, baseName = "file") {
 function serializeTimestamp(value) {
     const date = toDate(value);
     return date ? date.toISOString() : null;
+}
+
+function TelegramAlertPanel({ onCopyRules }) {
+    const toast = useToast();
+    const [loadingConfig, setLoadingConfig] = useState(true);
+    const [configured, setConfigured] = useState(false);
+    const [botToken, setBotToken] = useState("");
+    const [chatId, setChatId] = useState("");
+    const [botUsername, setBotUsername] = useState("");
+    const [updatedAt, setUpdatedAt] = useState("");
+    const [unlockMessage, setUnlockMessage] = useState("User Online aaya hai 😁✳️✅");
+    const [showToken, setShowToken] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [testing, setTesting] = useState(false);
+    const [needsRulesSync, setNeedsRulesSync] = useState(false);
+
+    const loadConfig = useCallback(async () => {
+        setLoadingConfig(true);
+        try {
+            const idToken = await auth?.currentUser?.getIdToken().catch(() => "");
+            const res = await fetch("/api/telegram-config", {
+                method: "GET",
+                headers: idToken ? { Authorization: `Bearer ${idToken}` } : {}
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                setConfigured(Boolean(data.configured));
+                setBotToken(data.botToken || "");
+                setChatId(data.chatId || "");
+                setBotUsername(data.botUsername || "");
+                setUpdatedAt(data.updatedAt || "");
+                if (data.unlockMessage) setUnlockMessage(data.unlockMessage);
+            }
+        } catch {
+            /* ignore initial fetch error */
+        } finally {
+            setLoadingConfig(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadConfig();
+    }, [loadConfig]);
+
+    async function handleSave() {
+        const cleanToken = botToken.trim();
+        const cleanChat = chatId.trim();
+        if (!cleanToken) {
+            toast.error("Telegram Bot Token dalein.");
+            return;
+        }
+        if (!cleanChat) {
+            toast.error("Telegram Channel / Chat ID dalein.");
+            return;
+        }
+
+        setSaving(true);
+        setNeedsRulesSync(false);
+        try {
+            const idToken = await auth?.currentUser?.getIdToken().catch(() => "");
+            const res = await fetch("/api/telegram-config", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+                },
+                body: JSON.stringify({
+                    action: "save",
+                    botToken: cleanToken,
+                    chatId: cleanChat
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data?.ok) {
+                if (res.status === 403 && /Rules/i.test(String(data?.error || ""))) {
+                    setNeedsRulesSync(true);
+                }
+                toast.error(data?.error || "Could not save Telegram settings.");
+                return;
+            }
+            setConfigured(true);
+            setBotToken(data.botToken || cleanToken);
+            setChatId(data.chatId || cleanChat);
+            setBotUsername(data.botUsername || "");
+            setUpdatedAt(data.updatedAt || new Date().toISOString());
+            toast.success("Telegram Bot Token & Chat ID saved successfully!");
+        } catch (err) {
+            toast.error(err?.message || "Could not save Telegram settings.");
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function handleSendTest() {
+        setTesting(true);
+        try {
+            const idToken = await auth?.currentUser?.getIdToken().catch(() => "");
+            const res = await fetch("/api/telegram-config", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+                },
+                body: JSON.stringify({
+                    action: "test",
+                    botToken: botToken.trim(),
+                    chatId: chatId.trim()
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data?.ok) {
+                toast.error(data?.error || "Could not send test message.");
+                return;
+            }
+            if (data.botUsername) setBotUsername(data.botUsername);
+            toast.success(data.message || "Test message sent to Telegram Channel!");
+        } catch (err) {
+            toast.error(err?.message || "Could not send test message.");
+        } finally {
+            setTesting(false);
+        }
+    }
+
+    return (
+        <div className="mx-auto max-w-2xl space-y-4">
+            <section className="panel p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <span
+                            className={cn(
+                                "flex size-10 shrink-0 items-center justify-center rounded-xl",
+                                configured
+                                    ? "bg-success/15 text-success"
+                                    : "bg-accent-soft text-accent"
+                            )}
+                        >
+                            <Send className="size-5" />
+                        </span>
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <h2 className="text-base font-bold">
+                                    Telegram Unlock Notification
+                                </h2>
+                                {loadingConfig ? (
+                                    <span className="rounded-full bg-bg px-2.5 py-0.5 text-[11px] font-semibold text-muted">
+                                        Loading…
+                                    </span>
+                                ) : configured ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-0.5 text-[11px] font-semibold text-success">
+                                        <CheckCircle2 className="size-3.5" />
+                                        Active{botUsername ? ` · @${botUsername}` : ""}
+                                    </span>
+                                ) : (
+                                    <span className="rounded-full bg-warn/15 px-2.5 py-0.5 text-[11px] font-semibold text-warn">
+                                        Not Set Yet
+                                    </span>
+                                )}
+                            </div>
+                            <p className="mt-0.5 text-xs text-muted">
+                                Jab bhi koi user App ka PIN daal kar page unlock karega, turant aapke Telegram Channel me message jayega.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Exact Message Preview */}
+                <div className="mt-4 rounded-xl border border-line bg-bg p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                        Unlock Message (Auto-sent on every PIN unlock)
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-ink">{unlockMessage}</p>
+                </div>
+
+                {needsRulesSync ? (
+                    <div className="mt-4 flex flex-col justify-between gap-2 rounded-xl border border-warn/40 bg-warn/10 p-3 sm:flex-row sm:items-center">
+                        <p className="text-xs text-ink">
+                            Pehle updated <strong>Firestore Rules</strong> copy karke{" "}
+                            <strong>Firebase Console → Firestore Database → Rules</strong> me Publish kar dein, fir Save dabayein.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={onCopyRules}
+                            className="btn btn-outline btn-sm shrink-0 text-xs"
+                        >
+                            <Copy className="size-3.5" /> Copy Firestore Rules
+                        </button>
+                    </div>
+                ) : null}
+
+                <div className="mt-4 space-y-3.5">
+                    <div>
+                        <div className="mb-1.5 flex items-center justify-between">
+                            <label className="text-xs font-bold text-ink">
+                                Telegram Bot Token
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => setShowToken((v) => !v)}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-ink"
+                            >
+                                {showToken ? (
+                                    <>
+                                        <EyeOff className="size-3.5" /> Hide Token
+                                    </>
+                                ) : (
+                                    <>
+                                        <Eye className="size-3.5" /> Show Token
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                        <input
+                            type="text"
+                            value={botToken}
+                            onChange={(e) => setBotToken(e.target.value)}
+                            autoComplete="off"
+                            spellCheck={false}
+                            placeholder="1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ..."
+                            style={
+                                showToken
+                                    ? undefined
+                                    : { WebkitTextSecurity: "disc" }
+                            }
+                            className="input h-10 w-full font-mono text-xs"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-1.5 block text-xs font-bold text-ink">
+                            Telegram Channel / Chat ID
+                        </label>
+                        <input
+                            type="text"
+                            value={chatId}
+                            onChange={(e) => setChatId(e.target.value)}
+                            autoComplete="off"
+                            spellCheck={false}
+                            placeholder="-1001234567890  ya  @your_channel_username"
+                            className="input h-10 w-full font-mono text-xs"
+                        />
+                    </div>
+
+                    {updatedAt ? (
+                        <p className="text-[11px] text-muted">
+                            Last updated: {formatDateTime(updatedAt)}
+                        </p>
+                    ) : null}
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <button
+                            type="button"
+                            onClick={handleSave}
+                            disabled={saving || loadingConfig}
+                            className="btn btn-primary btn-sm h-10 px-4"
+                        >
+                            {saving ? (
+                                <>
+                                    <Spinner className="size-4" /> Saving…
+                                </>
+                            ) : configured ? (
+                                "Update Token & Chat ID"
+                            ) : (
+                                "Save Token & Chat ID"
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleSendTest}
+                            disabled={testing || saving || loadingConfig}
+                            className="btn btn-outline btn-sm h-10 px-4"
+                        >
+                            {testing ? (
+                                <>
+                                    <Spinner className="size-4" /> Sending…
+                                </>
+                            ) : (
+                                <>
+                                    <Send className="size-3.5" /> Send Test Message
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section className="panel p-4 text-xs text-muted space-y-2">
+                <p className="font-bold text-ink">Quick Setup Tips:</p>
+                <ol className="list-decimal space-y-1.5 pl-4 leading-relaxed">
+                    <li>
+                        Telegram par <strong>@BotFather</strong> se apna Bot Token lein aur upar paste karein.
+                    </li>
+                    <li>
+                        Jis Telegram Channel me alert chahiye, us Channel ke{" "}
+                        <strong>Administrators</strong> me apne Bot ko add karein (
+                        <strong>Post Messages</strong> permission ON rakhein).
+                    </li>
+                    <li>
+                        Public channel ke liye <code>@channel_username</code> dalein, ya Private channel ke liye uska{" "}
+                        <code>-100...</code> wala Chat ID daal kar <strong>Save</strong> aur{" "}
+                        <strong>Send Test Message</strong> check kar lein.
+                    </li>
+                </ol>
+            </section>
+        </div>
+    );
 }
 
 function GoogleDriveSetupCard({ savedScriptUrl = "" }) {
@@ -705,7 +1015,10 @@ function AdminWorkspace({ onLock }) {
                 ) : null}
 
                 {/* Active user filter chip */}
-                {userFilterUid && activeTab !== "overview" && activeTab !== "users" ? (
+                {userFilterUid &&
+                activeTab !== "overview" &&
+                activeTab !== "users" &&
+                activeTab !== "telegram" ? (
                     <div className="mb-4 flex items-center justify-between gap-2 rounded-lg border border-accent/30 bg-accent-soft px-3 py-2 text-xs">
                         <span>
                             Showing records for{" "}
@@ -728,7 +1041,7 @@ function AdminWorkspace({ onLock }) {
                 ) : null}
 
                 {/* Shared search bar for list tabs */}
-                {activeTab !== "overview" ? (
+                {activeTab !== "overview" && activeTab !== "telegram" ? (
                     <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="w-full sm:max-w-md">
                             <SearchBar
@@ -863,6 +1176,13 @@ function AdminWorkspace({ onLock }) {
                                         className="btn btn-outline btn-sm"
                                     >
                                         <Cloud className="size-3.5" /> Drive Video Setup
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab("telegram")}
+                                        className="btn btn-outline btn-sm"
+                                    >
+                                        <Send className="size-3.5" /> Telegram Alert Setup
                                     </button>
                                 </div>
 
@@ -1641,6 +1961,11 @@ function AdminWorkspace({ onLock }) {
                             })}
                         </div>
                     )
+                ) : null}
+
+                {/* ==================== TELEGRAM ALERT TAB ==================== */}
+                {!loading && activeTab === "telegram" ? (
+                    <TelegramAlertPanel onCopyRules={copyRules} />
                 ) : null}
             </main>
 

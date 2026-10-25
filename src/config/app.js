@@ -4,6 +4,9 @@ export const branding = {
     logoUrl: import.meta.env.VITE_APP_LOGO_URL?.trim() || "/logo-mark.svg"
 };
 
+// App lock PIN required every time the project is opened.
+export const APP_LOCK_PIN = "272026";
+
 // Limits used across chat + voice pack.
 export const limits = {
     imageMaxBytes: 10 * 1024 * 1024, // 10 MB

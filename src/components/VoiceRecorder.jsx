@@ -64,10 +64,27 @@ export function VoiceRecorder({
         }
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const stream = await navigator.mediaDevices
+                .getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        channelCount: 1
+                    }
+                })
+                .catch(() => navigator.mediaDevices.getUserMedia({ audio: true }));
             streamRef.current = stream;
             const mime = recorderMimeType();
-            const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+            let recorder;
+            try {
+                recorder = new MediaRecorder(stream, {
+                    ...(mime ? { mimeType: mime } : {}),
+                    audioBitsPerSecond: 24000
+                });
+            } catch {
+                recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+            }
 
             chunksRef.current = [];
             cancelledRef.current = false;

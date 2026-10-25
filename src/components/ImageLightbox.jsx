@@ -1,7 +1,38 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Download, X } from "lucide-react";
+import { extensionForMime } from "../utils/files";
+import { dataUrlToObjectUrl } from "../utils/media";
+
+function downloadExtension(src) {
+    if (typeof src !== "string" || !src.startsWith("data:")) return "jpg";
+    const mime = src.slice(5).split(";")[0];
+    const ext = extensionForMime(mime);
+    return ext === "img" || ext === "bin" ? "jpg" : ext;
+}
 
 export function ImageLightbox({ src, onClose }) {
+    const [downloadHref, setDownloadHref] = useState("");
+
+    useEffect(() => {
+        if (!src) {
+            setDownloadHref("");
+            return undefined;
+        }
+        if (/^https?:\/\//i.test(src)) {
+            setDownloadHref(src);
+            return undefined;
+        }
+        if (src.startsWith("data:image/")) {
+            const objectUrl = dataUrlToObjectUrl(src);
+            setDownloadHref(objectUrl || src);
+            return () => {
+                if (objectUrl) URL.revokeObjectURL(objectUrl);
+            };
+        }
+        setDownloadHref("");
+        return undefined;
+    }, [src]);
+
     useEffect(() => {
         if (!src) return undefined;
         const onKey = (event) => {
@@ -12,7 +43,7 @@ export function ImageLightbox({ src, onClose }) {
     }, [src, onClose]);
 
     if (!src) return null;
-    const downloadable = /^https?:\/\//i.test(src);
+    const isHttp = /^https?:\/\//i.test(src);
 
     return (
         <div
@@ -23,14 +54,14 @@ export function ImageLightbox({ src, onClose }) {
             onMouseDown={onClose}
         >
             <div className="absolute right-3 top-3 flex gap-2">
-                {downloadable ? (
+                {downloadHref ? (
                     <a
-                        href={src}
-                        download
-                        target="_blank"
-                        rel="noreferrer"
+                        href={downloadHref}
+                        download={`photo.${downloadExtension(src)}`}
+                        target={isHttp ? "_blank" : undefined}
+                        rel={isHttp ? "noreferrer" : undefined}
                         className="flex size-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
-                        aria-label="Open image in a new tab"
+                        aria-label="Download image"
                         onMouseDown={(event) => event.stopPropagation()}
                     >
                         <Download className="size-5" />
@@ -38,8 +69,8 @@ export function ImageLightbox({ src, onClose }) {
                 ) : null}
                 <button
                     type="button"
-                    className="flex size-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
                     onClick={onClose}
+                    className="flex size-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
                     aria-label="Close photo"
                 >
                     <X className="size-5" />

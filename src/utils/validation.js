@@ -43,13 +43,23 @@ export function validateBio(bio) {
     return "";
 }
 
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
+const AUDIO_EXTS = new Set(["webm", "mp4", "m4a", "mp3", "ogg", "opus", "wav", "aac", "3gp"]);
+
 export function validateFile(file, kind) {
     if (!file) return "No file selected.";
     const isImage = kind === "image";
     const types = isImage ? limits.imageTypes : limits.audioTypes;
     const maxBytes = isImage ? limits.imageMaxBytes : limits.audioMaxBytes;
-    const mime = String(file.type || "").split(";")[0].trim();
-    if (types.length && !types.includes(mime))
+    const mime = String(file.type || "").split(";")[0].trim().toLowerCase();
+    const ext = String(file.name || "")
+        .split(".")
+        .pop()
+        .toLowerCase();
+    const extAllowed = isImage ? IMAGE_EXTS.has(ext) : AUDIO_EXTS.has(ext);
+    const mimeEmpty = !mime || mime === "application/octet-stream";
+
+    if (types.length && !(mimeEmpty ? extAllowed : types.includes(mime)))
         return isImage ? "Unsupported image format." : "Unsupported audio format.";
     if (file.size > maxBytes)
         return `File is too large (max ${Math.round(maxBytes / (1024 * 1024))} MB).`;

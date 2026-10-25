@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Pause, Play } from "lucide-react";
 import { formatClock } from "../utils/format";
+import { dataUrlToObjectUrl } from "../utils/media";
 import { cn } from "../utils/cn";
 
 export function VoicePlayer({ src, duration = 0, tone = "default" }) {
     const audioRef = useRef(null);
+    const [resolvedSrc, setResolvedSrc] = useState(() =>
+        typeof src === "string" && !src.startsWith("data:") ? src : ""
+    );
     const [playing, setPlaying] = useState(false);
     const [current, setCurrent] = useState(0);
     const [total, setTotal] = useState(Number(duration) || 0);
@@ -15,6 +19,25 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
         setCurrent(0);
         setFailed(false);
         setTotal(Number(duration) || 0);
+
+        if (!src) {
+            setResolvedSrc("");
+            return undefined;
+        }
+        if (!src.startsWith("data:")) {
+            setResolvedSrc(src);
+            return undefined;
+        }
+
+        const objectUrl = dataUrlToObjectUrl(src);
+        if (!objectUrl) {
+            setResolvedSrc(src);
+            return undefined;
+        }
+        setResolvedSrc(objectUrl);
+        return () => {
+            URL.revokeObjectURL(objectUrl);
+        };
     }, [src, duration]);
 
     useEffect(() => {
@@ -23,13 +46,16 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
 
         const onTime = () => setCurrent(audio.currentTime || 0);
         const onMeta = () => {
-            if (Number.isFinite(audio.duration) && audio.duration > 0) setTotal(audio.duration);
+            if (Number.isFinite(audio.duration) && audio.duration > 0) {
+                setTotal(audio.duration);
+            }
         };
         const onEnd = () => {
             setPlaying(false);
             setCurrent(0);
         };
         const onError = () => {
+            if (!audio.getAttribute("src")) return;
             setFailed(true);
             setPlaying(false);
         };
@@ -48,7 +74,7 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
 
     async function toggle() {
         const audio = audioRef.current;
-        if (!audio || !src) return;
+        if (!audio || !resolvedSrc) return;
         if (playing) {
             audio.pause();
             setPlaying(false);
@@ -77,7 +103,7 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
 
     return (
         <div className={cn("flex min-w-[190px] items-center gap-2.5 py-0.5")}>
-            <audio ref={audioRef} src={src} preload="metadata" />
+            <audio ref={audioRef} src={resolvedSrc || undefined} preload="metadata" />
             <button
                 type="button"
                 onClick={toggle}

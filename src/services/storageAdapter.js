@@ -1,16 +1,16 @@
 import { isStorageConfigured, env, emulator } from "../config/env";
 import { AppError } from "./errors";
 import { extensionForMime } from "../utils/files";
+import { encodeChatImageDataUrl, encodeVoiceDataUrl } from "../utils/media";
 
 /**
  * Storage adapter boundary.
  *
- * Firestore never stores binary data. File bytes are uploaded through one of
- * these adapters and only the resulting URL + metadata go into Firestore.
- *
- *   - "http"     : POST to VITE_UPLOAD_ENDPOINT (multipart form-data), expects JSON { url }
+ *   - "firestore": compresses images/audio on the client and stores a permanent
+ *                  self-contained data URL in the Firestore message document
+ *                  (default when no Firebase Storage bucket is configured)
  *   - "firebase" : Firebase Storage upload (auto-enabled when a bucket is set)
- *   - otherwise  : disabled, `uploadFile` rejects with a clear message
+ *   - "http"     : POST to VITE_UPLOAD_ENDPOINT (multipart form-data), expects JSON { url }
  */
 
 function safeName(file) {
@@ -21,6 +21,30 @@ function safeName(file) {
         .slice(0, 48);
     const random = Math.random().toString(36).slice(2, 8);
     return `${Date.now()}-${random}-${base || "file"}.${ext}`;
+}
+
+async function uploadViaFirestore(file, { folder, onProgress }) {
+    const { auth } = await import("./firebase");
+    if (!auth?.currentUser) {
+        throw new AppError(
+            "storage/not-authenticated",
+            "Your session expired. Sign in again to send media."
+        );
+    }
+
+    const kind = String(folder || "").split("/")[0];
+    const mime = String(file?.type || "").toLowerCase();
+    const isAudio =
+        kind === "voiceNotes" ||
+        mime.startsWith("audio/") ||
+        mime === "video/webm" ||
+        mime === "application/ogg";
+
+    const url = isAudio
+        ? await encodeVoiceDataUrl(file, { onProgress })
+        : await encodeChatImageDataUrl(file, { onProgress });
+
+    return { url, storagePath: "" };
 }
 
 async function uploadViaHttp(file, { folder }) {
@@ -105,7 +129,7 @@ export function storageStatus() {
             configured: false,
             provider: env.storage.provider || "none",
             message:
-                "File uploads need storage. Add VITE_FIREBASE_STORAGE_BUCKET (or configure the HTTP uploader) and enable Firebase Storage."
+                "File uploads need storage. Configure Firebase or set VITE_STORAGE_PROVIDER."
         };
     }
     return { configured: true, provider: env.storage.provider, message: "" };
@@ -118,6 +142,8 @@ export async function uploadFile(file, { folder = "uploads", onProgress } = {}) 
             "File storage is not configured. See README → Storage setup."
         );
     }
+    if (env.storage.provider === "firestore")
+        return uploadViaFirestore(file, { folder, onProgress });
     if (env.storage.provider === "http") return uploadViaHttp(file, { folder, onProgress });
     if (env.storage.provider === "firebase")
         return uploadViaFirebase(file, { folder, onProgress });

@@ -83,7 +83,7 @@ service cloud.firestore {
         && isParticipant(request.resource.data)
         && request.resource.data.participants == resource.data.participants
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'lastMessage', 'unread', 'updatedAt'
+          'lastMessage', 'unread', 'reads', 'typing', 'updatedAt'
         ]);
 
       allow delete: if false;
@@ -152,7 +152,7 @@ service cloud.firestore {
         && isParticipant(request.resource.data)
         && request.resource.data.participants == resource.data.participants
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'lastMessage', 'unread', 'updatedAt'
+          'lastMessage', 'unread', 'reads', 'typing', 'updatedAt'
         ]);
 
       allow delete: if false;

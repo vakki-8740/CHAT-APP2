@@ -10,6 +10,7 @@
     "lint": "node node_modules/oxlint/bin/oxlint src"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "firebase": "^13.1.0",
     "lucide-react": "^0.469.0",
     "react": "^19.3.1",

@@ -15,9 +15,11 @@ export const env = {
         storageBucket: read("VITE_FIREBASE_STORAGE_BUCKET")
     },
     storage: {
-        // Falls back to Firebase Storage when a bucket is supplied.
+        // Defaults to permanent Firestore media encoding unless Firebase Storage
+        // bucket or an explicit HTTP upload endpoint is configured.
         provider:
-            storageProvider || (read("VITE_FIREBASE_STORAGE_BUCKET") ? "firebase" : ""),
+            storageProvider ||
+            (read("VITE_FIREBASE_STORAGE_BUCKET") ? "firebase" : "firestore"),
         uploadEndpoint: read("VITE_UPLOAD_ENDPOINT"),
         uploadToken: read("VITE_UPLOAD_TOKEN")
     },
@@ -45,5 +47,6 @@ export const emulator = {
 };
 
 export const isStorageConfigured =
+    (env.storage.provider === "firestore" && isFirebaseConfigured) ||
     (env.storage.provider === "http" && Boolean(env.storage.uploadEndpoint)) ||
     (env.storage.provider === "firebase" && Boolean(env.firebase.storageBucket));

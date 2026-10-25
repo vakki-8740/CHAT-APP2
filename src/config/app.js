@@ -12,14 +12,19 @@ export const limits = {
     imageMaxBytes: 10 * 1024 * 1024, // 10 MB
     audioMaxBytes: 15 * 1024 * 1024, // 15 MB
     voiceMaxSeconds: 5 * 60,
-    imageTypes: ["image/png", "image/jpeg", "image/webp", "image/gif"],
+    imageTypes: ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"],
     audioTypes: [
         "audio/webm",
+        "video/webm",
         "audio/mp4",
         "audio/mpeg",
+        "audio/mp3",
         "audio/ogg",
+        "application/ogg",
+        "audio/opus",
         "audio/wav",
         "audio/x-wav",
+        "audio/wave",
         "audio/x-m4a",
         "audio/m4a",
         "audio/aac",

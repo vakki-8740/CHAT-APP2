@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, MessageSquare, WifiOff } from "lucide-react";
 import { Avatar } from "../components/Avatar";
 import { ChatBubble } from "../components/ChatBubble";
+import { DayDivider } from "../components/DayDivider";
 import { CallButton } from "../components/CallButton";
 import { MessageComposer } from "../components/MessageComposer";
 import { MessageMenu } from "../components/MessageMenu";
@@ -18,7 +19,8 @@ import { userService, isOnline } from "../services/userService";
 import { storageStatus, uploadFile } from "../services/storageAdapter";
 import { validateFile } from "../utils/validation";
 import { playSound } from "../utils/sounds";
-import { formatDayLabel, toDate } from "../utils/format";
+import { toDate } from "../utils/format";
+import { cn } from "../utils/cn";
 
 export default function ChatPage() {
     const { uid: peerUid } = useParams();
@@ -42,6 +44,9 @@ export default function ChatPage() {
 
     const bottomRef = useRef(null);
     const previousCount = useRef(0);
+    const typingTimer = useRef(null);
+    const typingSent = useRef(false);
+    const typingLastWrite = useRef(0);
 
     useEffect(() => {
         if (peerUid === uid) navigate("/", { replace: true });
@@ -66,10 +71,51 @@ export default function ChatPage() {
         );
     }, [peerUid]);
 
+    const hasChat = Boolean(chat);
+    const latestMessageId = chat?.lastMessage?.id || "";
+    const latestSenderId = chat?.lastMessage?.senderId || "";
+    const peerReadAt = toDate(chat?.reads?.[peerUid]);
+    const peerTypingStamp = toDate(chat?.typing?.[peerUid])?.getTime() || 0;
+    const [peerTyping, setPeerTyping] = useState(false);
+
     useEffect(() => {
-        if (!uid || !peerUid) return;
-        chatService.resetUnread({ uid, otherUid: peerUid });
-    }, [uid, peerUid, messages.length]);
+        if (!uid || !peerUid || !hasChat || !latestMessageId) return undefined;
+        if (latestSenderId === uid) return undefined;
+
+        const markRead = () => {
+            if (document.visibilityState !== "visible") return;
+            chatService.markRead({ uid, otherUid: peerUid });
+        };
+
+        markRead();
+        document.addEventListener("visibilitychange", markRead);
+        window.addEventListener("focus", markRead);
+        return () => {
+            document.removeEventListener("visibilitychange", markRead);
+            window.removeEventListener("focus", markRead);
+        };
+    }, [uid, peerUid, hasChat, latestMessageId, latestSenderId]);
+
+    useEffect(() => {
+        if (!peerTypingStamp || Date.now() - peerTypingStamp > 120000) {
+            setPeerTyping(false);
+            return undefined;
+        }
+        setPeerTyping(true);
+        const timer = window.setTimeout(() => setPeerTyping(false), 6500);
+        return () => window.clearTimeout(timer);
+    }, [peerTypingStamp]);
+
+    useEffect(
+        () => () => {
+            if (typingTimer.current) window.clearTimeout(typingTimer.current);
+            if (typingSent.current && uid && peerUid) {
+                typingSent.current = false;
+                chatService.setTyping({ uid, otherUid: peerUid, typing: false });
+            }
+        },
+        [uid, peerUid]
+    );
 
     useEffect(() => {
         setPending((list) =>
@@ -113,6 +159,44 @@ export default function ChatPage() {
     function resolveName(id) {
         if (id === uid) return profile?.displayName || "You";
         return peer?.displayName || "User";
+    }
+
+    function stopTyping() {
+        if (typingTimer.current) {
+            window.clearTimeout(typingTimer.current);
+            typingTimer.current = null;
+        }
+        if (!typingSent.current || !uid || !peerUid) return;
+        typingSent.current = false;
+        typingLastWrite.current = 0;
+        chatService.setTyping({ uid, otherUid: peerUid, typing: false });
+    }
+
+    function handleDraftChange(value) {
+        setDraft(value);
+        if (editing || !hasChat) return;
+        if (!value.trim()) {
+            stopTyping();
+            return;
+        }
+
+        const now = Date.now();
+        if (!typingSent.current || now - typingLastWrite.current > 2500) {
+            typingSent.current = true;
+            typingLastWrite.current = now;
+            chatService.setTyping({ uid, otherUid: peerUid, typing: true }).catch(() => {
+                typingSent.current = false;
+            });
+        }
+
+        if (typingTimer.current) window.clearTimeout(typingTimer.current);
+        typingTimer.current = window.setTimeout(() => {
+            typingTimer.current = null;
+            if (!typingSent.current) return;
+            typingSent.current = false;
+            typingLastWrite.current = 0;
+            chatService.setTyping({ uid, otherUid: peerUid, typing: false });
+        }, 3500);
     }
 
     async function deliver(message) {
@@ -167,6 +251,7 @@ export default function ChatPage() {
             return;
         }
 
+        stopTyping();
         const message = {
             id: chatService.newMessageId(uid, peerUid),
             senderId: uid,
@@ -192,6 +277,7 @@ export default function ChatPage() {
             return;
         }
 
+        stopTyping();
         setUploading(true);
         toast.info("Uploading photo…");
         try {
@@ -314,6 +400,7 @@ export default function ChatPage() {
             <ChatHeader
                 peer={peer}
                 online={isOnline(peer)}
+                typing={peerTyping}
                 subtitle={
                     peerError
                         ? "Profile unavailable"
@@ -353,14 +440,16 @@ export default function ChatPage() {
                                 const currentDay = toDate(message.createdAt)?.toDateString();
                                 const previousDay = toDate(previous?.createdAt)?.toDateString();
                                 const showDay = index === 0 || currentDay !== previousDay;
+                                const messageDate = toDate(message.createdAt);
+                                const seen =
+                                    !message.status &&
+                                    Boolean(peerReadAt) &&
+                                    Boolean(messageDate) &&
+                                    messageDate <= peerReadAt;
                                 return (
                                     <div key={message.id}>
                                         {showDay ? (
-                                            <div className="my-3 flex justify-center">
-                                                <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm">
-                                                    {formatDayLabel(message.createdAt)}
-                                                </span>
-                                            </div>
+                                            <DayDivider value={message.createdAt} />
                                         ) : null}
                                         <ChatBubble
                                             message={message}
@@ -368,6 +457,7 @@ export default function ChatPage() {
                                             currentUid={uid}
                                             peer={peer}
                                             resolveName={resolveName}
+                                            seen={seen}
                                             onMenu={setMenuMessage}
                                             onOpenImage={setLightbox}
                                             onRetry={(item) => deliver(item)}
@@ -384,7 +474,7 @@ export default function ChatPage() {
 
             <MessageComposer
                 value={draft}
-                onChange={setDraft}
+                onChange={handleDraftChange}
                 onSend={handleSend}
                 onImageSelected={handleImage}
                 replyTo={replyTo}
@@ -457,7 +547,7 @@ export default function ChatPage() {
     );
 }
 
-function ChatHeader({ peer, online, subtitle }) {
+function ChatHeader({ peer, online, typing, subtitle }) {
     return (
         <header className="safe-top sticky top-0 z-20 border-b border-line bg-card/95 backdrop-blur">
             <div className="flex items-center gap-2.5 px-2 py-2">
@@ -479,7 +569,14 @@ function ChatHeader({ peer, online, subtitle }) {
                     <p className="truncate text-[15px] font-bold leading-tight">
                         {peer?.displayName || "Chat"}
                     </p>
-                    <p className="truncate text-2xs text-muted">{subtitle}</p>
+                    <p
+                        className={cn(
+                            "truncate text-2xs",
+                            typing ? "font-semibold text-accent" : "text-muted"
+                        )}
+                    >
+                        {typing ? "typing…" : subtitle}
+                    </p>
                 </div>
                 <CallButton peer={peer} />
             </div>

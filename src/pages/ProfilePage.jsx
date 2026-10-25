@@ -11,8 +11,7 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { authService } from "../services/authService";
 import { userService } from "../services/userService";
-import { isStorageConfigured } from "../config/env";
-import { storageStatus, uploadFile } from "../services/storageAdapter";
+import { createAvatarDataUrl } from "../utils/avatar";
 import {
     isValidMobile,
     normalizeMobile,
@@ -168,19 +167,13 @@ export default function ProfilePage() {
             toast.error(validation);
             return;
         }
-        const status = storageStatus();
-        if (!status.configured) {
-            toast.error(status.message);
-            return;
-        }
-
         setPhotoUploading(true);
         try {
-            const { url } = await uploadFile(file, { folder: `avatars/${uid}` });
-            await userService.updateProfile(uid, { photoURL: url });
+            const photoURL = await createAvatarDataUrl(file);
+            await userService.updateProfile(uid, { photoURL });
             toast.success("Profile photo updated.");
         } catch (nextError) {
-            toast.error(nextError.message || "Could not upload the photo.");
+            toast.error(nextError.message || "Could not update the photo.");
         } finally {
             setPhotoUploading(false);
         }
@@ -216,34 +209,30 @@ export default function ProfilePage() {
                                     size="xl"
                                     className="rounded-full ring-4 ring-card"
                                 />
-                                {isStorageConfigured ? (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={() => photoRef.current?.click()}
-                                            disabled={photoUploading}
-                                            className="absolute bottom-0 right-0 flex size-8 items-center justify-center rounded-full border-2 border-card bg-accent text-white disabled:opacity-60"
-                                            aria-label="Change profile photo"
-                                        >
-                                            {photoUploading ? (
-                                                <Spinner className="size-3.5" />
-                                            ) : (
-                                                <Camera className="size-4" />
-                                            )}
-                                        </button>
-                                        <input
-                                            ref={photoRef}
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            onChange={(event) => {
-                                                const file = event.target.files?.[0];
-                                                event.target.value = "";
-                                                if (file) handlePhoto(file);
-                                            }}
-                                        />
-                                    </>
-                                ) : null}
+                                <button
+                                    type="button"
+                                    onClick={() => photoRef.current?.click()}
+                                    disabled={photoUploading}
+                                    className="absolute bottom-0 right-0 flex size-8 items-center justify-center rounded-full border-2 border-card bg-accent text-white disabled:opacity-60"
+                                    aria-label="Change profile photo"
+                                >
+                                    {photoUploading ? (
+                                        <Spinner className="size-3.5" />
+                                    ) : (
+                                        <Camera className="size-4" />
+                                    )}
+                                </button>
+                                <input
+                                    ref={photoRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(event) => {
+                                        const file = event.target.files?.[0];
+                                        event.target.value = "";
+                                        if (file) handlePhoto(file);
+                                    }}
+                                />
                             </div>
 
                             {!editing ? (

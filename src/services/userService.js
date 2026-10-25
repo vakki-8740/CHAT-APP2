@@ -15,6 +15,7 @@ import { limits } from "../config/app";
 import { isValidMobile, normalizeMobile } from "../utils/validation";
 
 const USERS = "users";
+const MAX_PHOTO_URL_LENGTH = 600000;
 
 export const PROFILE_FIELDS = ["displayName", "photoURL", "bio"];
 
@@ -92,6 +93,8 @@ export const userService = {
             }
             if (field === "bio" && value.length > limits.bioMaxLength)
                 throw new AppError("validation/bio", "About text is too long.");
+            if (field === "photoURL" && value.length > MAX_PHOTO_URL_LENGTH)
+                throw new AppError("validation/photo", "Profile photo is too large.");
             clean[field] = value;
         }
         if (Object.keys(clean).length === 0) return;

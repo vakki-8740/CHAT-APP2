@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Mic, Paperclip, X } from "lucide-react";
 import { Avatar } from "../components/Avatar";
 import { ChatBubble } from "../components/ChatBubble";
+import { DayDivider } from "../components/DayDivider";
 import { CallButton } from "../components/CallButton";
 import { VoiceRecorder } from "../components/VoiceRecorder";
 import { MessageMenu } from "../components/MessageMenu";
@@ -17,7 +18,7 @@ import { makeChatId } from "../services/chatService";
 import { userService, isOnline } from "../services/userService";
 import { storageStatus, uploadFile } from "../services/storageAdapter";
 import { validateFile } from "../utils/validation";
-import { formatDayLabel, toDate } from "../utils/format";
+import { toDate } from "../utils/format";
 import { getAudioDuration } from "../utils/files";
 import { limits } from "../config/app";
 import { cn } from "../utils/cn";
@@ -44,6 +45,11 @@ export default function VoiceChatPage() {
     const bottomRef = useRef(null);
     const previousCount = useRef(0);
 
+    const hasChat = Boolean(chat);
+    const latestMessageId = chat?.lastMessage?.id || "";
+    const latestSenderId = chat?.lastMessage?.senderId || "";
+    const peerReadAt = toDate(chat?.reads?.[peerUid]);
+
     useEffect(() => {
         if (peerUid === uid) navigate("/voice", { replace: true });
     }, [peerUid, uid, navigate]);
@@ -67,9 +73,22 @@ export default function VoiceChatPage() {
     }, [peerUid]);
 
     useEffect(() => {
-        if (!uid || !peerUid) return;
-        voiceService.resetUnread({ uid, otherUid: peerUid });
-    }, [uid, peerUid, messages.length]);
+        if (!uid || !peerUid || !hasChat || !latestMessageId) return undefined;
+        if (latestSenderId === uid) return undefined;
+
+        const markRead = () => {
+            if (document.visibilityState !== "visible") return;
+            voiceService.markRead({ uid, otherUid: peerUid });
+        };
+
+        markRead();
+        document.addEventListener("visibilitychange", markRead);
+        window.addEventListener("focus", markRead);
+        return () => {
+            document.removeEventListener("visibilitychange", markRead);
+            window.removeEventListener("focus", markRead);
+        };
+    }, [uid, peerUid, hasChat, latestMessageId, latestSenderId]);
 
     useEffect(() => {
         setPending((list) => {
@@ -313,14 +332,16 @@ export default function VoiceChatPage() {
                                 const currentDay = toDate(message.createdAt)?.toDateString();
                                 const previousDay = toDate(previous?.createdAt)?.toDateString();
                                 const showDay = index === 0 || currentDay !== previousDay;
+                                const messageDate = toDate(message.createdAt);
+                                const seen =
+                                    !message.status &&
+                                    Boolean(peerReadAt) &&
+                                    Boolean(messageDate) &&
+                                    messageDate <= peerReadAt;
                                 return (
                                     <div key={message.id}>
                                         {showDay ? (
-                                            <div className="my-3 flex justify-center">
-                                                <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm">
-                                                    {formatDayLabel(message.createdAt)}
-                                                </span>
-                                            </div>
+                                            <DayDivider value={message.createdAt} />
                                         ) : null}
                                         <ChatBubble
                                             message={message}
@@ -328,6 +349,7 @@ export default function VoiceChatPage() {
                                             currentUid={uid}
                                             peer={peer}
                                             resolveName={resolveName}
+                                            seen={seen}
                                             onMenu={setMenuMessage}
                                             onRetry={(item) =>
                                                 sendVoice({

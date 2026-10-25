@@ -51,6 +51,8 @@ export function previewForMessage(type, text) {
  *      participants: [uidA, uidB]
  *      lastMessage:  { id, type, text, senderId, createdAt }
  *      unread:       { [uid]: number }
+ *      reads:        { [uid]: Timestamp }
+ *      typing:       { [uid]: Timestamp }
  *      updatedAt, createdAt
  *
  *   {collection}/{chatId}/messages/{messageId}:
@@ -371,15 +373,24 @@ export function createThreadService(collectionName) {
             }
         },
 
-        async resetUnread({ uid, otherUid }) {
+        async markRead({ uid, otherUid }) {
             requireDb();
-            const ref = chatRef(uid, otherUid);
             try {
-                const snap = await getDoc(ref);
-                if (!snap.exists()) return;
-                const unread = snap.data().unread || {};
-                if (!unread[uid]) return;
-                await updateDoc(ref, { [`unread.${uid}`]: 0 });
+                await updateDoc(chatRef(uid, otherUid), {
+                    [`reads.${uid}`]: serverTimestamp(),
+                    [`unread.${uid}`]: 0
+                });
+            } catch {
+                /* non-critical */
+            }
+        },
+
+        async setTyping({ uid, otherUid, typing }) {
+            requireDb();
+            try {
+                await updateDoc(chatRef(uid, otherUid), {
+                    [`typing.${uid}`]: typing ? serverTimestamp() : deleteField()
+                });
             } catch {
                 /* non-critical */
             }

@@ -1,4 +1,12 @@
-import { AlertCircle, Ban, Clock3, MoreHorizontal, RotateCw } from "lucide-react";
+import {
+    AlertCircle,
+    Ban,
+    Check,
+    CheckCheck,
+    Clock3,
+    MoreHorizontal,
+    RotateCw
+} from "lucide-react";
 import { Avatar } from "./Avatar";
 import { VoicePlayer } from "./VoicePlayer";
 import { formatTime } from "../utils/format";
@@ -21,11 +29,13 @@ export function ChatBubble({
     onMenu,
     onOpenImage,
     onRetry,
-    onReact
+    onReact,
+    seen = false
 }) {
     const deleted = Boolean(message.deletedForEveryone);
     const failed = message.status === "failed";
     const sending = message.status === "sending" || message.status === "uploading";
+    const showReceipt = mine && !deleted && !failed && !sending;
     const reactions = mergeReactions(message.reactions);
 
     return (
@@ -105,6 +115,19 @@ export function ChatBubble({
                     >
                         {sending ? <Clock3 className="size-3" /> : null}
                         <span>{formatTime(message.createdAt)}</span>
+                        {showReceipt ? (
+                            seen ? (
+                                <CheckCheck
+                                    className="size-3.5 text-white"
+                                    aria-label="Seen"
+                                />
+                            ) : (
+                                <Check
+                                    className="size-3 text-white/60"
+                                    aria-label="Sent"
+                                />
+                            )
+                        ) : null}
                         {message.editedAt && !deleted ? <span>· edited</span> : null}
                     </p>
                 </div>

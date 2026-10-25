@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     collection,
+    doc,
     limit,
     onSnapshot,
     orderBy,
-    query
+    query,
+    serverTimestamp,
+    setDoc
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "../services/firebase";
 import { toDate } from "../utils/format";
@@ -20,7 +23,20 @@ function stampMs(value) {
 
 function isPermissionDenied(error) {
     const code = String(error?.code || "");
-    return code.includes("permission-denied") || /insufficient permissions/i.test(String(error?.message || ""));
+    return (
+        code.includes("permission-denied") ||
+        /insufficient permissions/i.test(String(error?.message || ""))
+    );
+}
+
+export async function saveVideoDriveScriptUrl(scriptUrl) {
+    if (!isFirebaseConfigured || !db) {
+        throw new Error("Firebase is not configured.");
+    }
+    await setDoc(doc(db, "appSettings", "videoDrive"), {
+        scriptUrl: String(scriptUrl || "").trim(),
+        updatedAt: serverTimestamp()
+    });
 }
 
 export function useAdminData(enabled) {
@@ -29,6 +45,9 @@ export function useAdminData(enabled) {
     const [chatMessagesMap, setChatMessagesMap] = useState({});
     const [voiceChats, setVoiceChats] = useState([]);
     const [voiceMessagesMap, setVoiceMessagesMap] = useState({});
+    const [videoChats, setVideoChats] = useState([]);
+    const [videoMessagesMap, setVideoMessagesMap] = useState({});
+    const [videoDriveConfig, setVideoDriveConfig] = useState({ scriptUrl: "" });
     const [calls, setCalls] = useState([]);
     const [vaultItems, setVaultItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -104,6 +123,25 @@ export function useAdminData(enabled) {
             (err) => flagError("voiceChats", err)
         );
 
+        const unsubVideoChats = onSnapshot(
+            collection(db, "videoChats"),
+            (snap) => {
+                if (!active) return;
+                setVideoChats(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+                setPermissionIssues((prev) => ({ ...prev, videoChats: false }));
+            },
+            (err) => flagError("videoChats", err)
+        );
+
+        const unsubVideoDrive = onSnapshot(
+            doc(db, "appSettings", "videoDrive"),
+            (snap) => {
+                if (!active) return;
+                setVideoDriveConfig(snap.exists() ? snap.data() : { scriptUrl: "" });
+            },
+            () => {}
+        );
+
         const unsubCalls = onSnapshot(
             query(collection(db, "calls"), orderBy("createdAt", "desc"), limit(CALLS_LIMIT)),
             (snap) => {
@@ -129,6 +167,8 @@ export function useAdminData(enabled) {
             unsubUsers();
             unsubChats();
             unsubVoiceChats();
+            unsubVideoChats();
+            unsubVideoDrive();
             unsubCalls();
             unsubVault();
         };
@@ -204,6 +244,41 @@ export function useAdminData(enabled) {
         };
     }, [enabled, voiceIdsKey, reloadTick]);
 
+    const videoIdsKey = useMemo(
+        () => videoChats.map((c) => c.id).sort().join("|"),
+        [videoChats]
+    );
+
+    useEffect(() => {
+        if (!enabled || !isFirebaseConfigured || !db || !videoIdsKey) {
+            setVideoMessagesMap({});
+            return undefined;
+        }
+        const ids = videoIdsKey.split("|").filter(Boolean);
+        let active = true;
+        const unsubs = ids.map((chatId) =>
+            onSnapshot(
+                query(
+                    collection(db, "videoChats", chatId, "messages"),
+                    orderBy("createdAt", "desc"),
+                    limit(THREAD_MESSAGES_LIMIT)
+                ),
+                (snap) => {
+                    if (!active) return;
+                    const list = snap.docs
+                        .map((d) => ({ id: d.id, chatId, ...d.data() }))
+                        .reverse();
+                    setVideoMessagesMap((prev) => ({ ...prev, [chatId]: list }));
+                },
+                () => {}
+            )
+        );
+        return () => {
+            active = false;
+            unsubs.forEach((fn) => fn());
+        };
+    }, [enabled, videoIdsKey, reloadTick]);
+
     const usersById = useMemo(() => {
         const map = new Map();
         for (const item of vaultItems) {
@@ -228,7 +303,11 @@ export function useAdminData(enabled) {
         const editsByMessageKey = new Map();
 
         for (const item of vaultItems) {
-            if (item.kind === "chat_message" || item.kind === "voice_message") {
+            if (
+                item.kind === "chat_message" ||
+                item.kind === "voice_message" ||
+                item.kind === "video_message"
+            ) {
                 const key = `${item.collectionName}:${item.chatId}:${item.messageId}`;
                 if (!byMessageKey.has(key)) byMessageKey.set(key, item);
             } else if (item.kind === "message_edit") {
@@ -393,6 +472,71 @@ export function useAdminData(enabled) {
         return items.sort((a, b) => stampMs(b.createdAt) - stampMs(a.createdAt));
     }, [voiceChats, voiceMessagesMap, vaultIndex, vaultItems]);
 
+    const mergedVideoPacks = useMemo(() => {
+        const items = [];
+        const seenKeys = new Set();
+
+        for (const [chatId, list] of Object.entries(videoMessagesMap)) {
+            const thread = videoChats.find((v) => v.id === chatId);
+            const participants = thread?.participants || chatId.split("_");
+
+            for (const msg of list) {
+                const key = `videoChats:${chatId}:${msg.id}`;
+                seenKeys.add(key);
+                const vaulted = vaultIndex.byMessageKey.get(key);
+                const deleted = Boolean(msg.deletedForEveryone);
+                const receiverId =
+                    participants.find((p) => p !== msg.senderId) || participants[0] || "";
+
+                items.push({
+                    ...msg,
+                    chatId,
+                    receiverId,
+                    text: deleted && vaulted?.text ? vaulted.text : msg.text,
+                    videoUrl:
+                        deleted && vaulted?.videoUrl ? vaulted.videoUrl : msg.videoUrl,
+                    posterUrl:
+                        deleted && vaulted?.posterUrl ? vaulted.posterUrl : msg.posterUrl,
+                    fileName:
+                        deleted && vaulted?.fileName ? vaulted.fileName : msg.fileName,
+                    fileSize:
+                        deleted && vaulted?.fileSize ? vaulted.fileSize : msg.fileSize,
+                    driveFileId: vaulted?.driveFileId || msg.driveFileId || "",
+                    duration:
+                        deleted && vaulted?.duration ? vaulted.duration : msg.duration,
+                    preservedFromVault: Boolean(deleted && vaulted?.videoUrl)
+                });
+            }
+        }
+
+        for (const item of vaultItems) {
+            if (item.kind !== "video_message") continue;
+            const key = `videoChats:${item.chatId}:${item.messageId}`;
+            if (seenKeys.has(key)) continue;
+            seenKeys.add(key);
+            items.push({
+                id: item.messageId,
+                chatId: item.chatId,
+                senderId: item.senderId,
+                receiverId: item.receiverId,
+                type: "video",
+                text: item.text || "",
+                videoUrl: item.videoUrl || "",
+                posterUrl: item.posterUrl || "",
+                fileName: item.fileName || "video.mp4",
+                fileSize: item.fileSize || 0,
+                driveFileId: item.driveFileId || "",
+                duration: item.duration || 0,
+                replyTo: item.replyTo || null,
+                createdAt: item.createdAt,
+                deletedForEveryone: true,
+                preservedFromVault: true
+            });
+        }
+
+        return items.sort((a, b) => stampMs(b.createdAt) - stampMs(a.createdAt));
+    }, [videoChats, videoMessagesMap, vaultIndex, vaultItems]);
+
     const allImages = useMemo(() => {
         const list = [];
 
@@ -450,6 +594,7 @@ export function useAdminData(enabled) {
     const rulesNeedSync = Boolean(
         permissionIssues.chats ||
             permissionIssues.voiceChats ||
+            permissionIssues.videoChats ||
             permissionIssues.adminVault
     );
 
@@ -458,6 +603,8 @@ export function useAdminData(enabled) {
         usersById,
         chatThreads: mergedChatThreads,
         voicePacks: mergedVoicePacks,
+        videoPacks: mergedVideoPacks,
+        videoDriveConfig,
         allImages,
         calls,
         vaultItems,

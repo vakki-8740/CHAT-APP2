@@ -199,6 +199,77 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
+    // Video Pack chats (Google Drive 200 MB permanent videos).
+    // Completely separate from text chats and Voice Pack chats.
+    // ---------------------------------------------------------------
+    match /videoChats/{chatId} {
+      allow get: if isAdmin() || (signedIn() && (resource == null || isParticipant(resource.data)));
+      allow list: if isAdmin() || isParticipant(resource.data);
+
+      allow create: if signedIn()
+        && validParticipants(request.resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.keys().hasOnly([
+          'participants', 'lastMessage', 'unread', 'createdAt', 'updatedAt'
+        ]);
+
+      allow update: if isParticipant(resource.data)
+        && isParticipant(request.resource.data)
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage', 'unread', 'reads', 'typing', 'updatedAt'
+        ]);
+
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        function parentThread() {
+          return get(/databases/$(database)/documents/videoChats/$(chatId));
+        }
+
+        allow read: if isAdmin()
+          || (signedIn()
+            && (parentThread() == null
+              || request.auth.uid in parentThread().data.participants));
+
+        allow create: if signedIn()
+          && request.auth.uid in parentThread().data.participants
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.type == 'video'
+          && request.resource.data.keys().hasOnly([
+            'senderId', 'type', 'text', 'imageUrl', 'audioUrl', 'videoUrl',
+            'posterUrl', 'fileName', 'fileSize', 'driveFileId', 'duration',
+            'replyTo', 'reactions', 'hiddenFor', 'deletedForEveryone', 'createdAt'
+          ])
+          && request.resource.data.videoUrl is string
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 4000
+          && (request.resource.data.replyTo == null || request.resource.data.replyTo is map)
+          && request.resource.data.deletedForEveryone == false;
+
+        allow update: if signedIn()
+          && request.auth.uid in parentThread().data.participants
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 4000
+          && (
+            (
+              resource.data.senderId == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'text', 'imageUrl', 'audioUrl', 'videoUrl', 'posterUrl',
+                'fileName', 'fileSize', 'duration', 'editedAt',
+                'deletedForEveryone', 'reactions', 'hiddenFor'
+              ])
+            )
+            || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'reactions', 'hiddenFor'
+            ])
+          );
+
+        allow delete: if false;
+      }
+    }
+
+    // ---------------------------------------------------------------
     // One-to-one voice/video calls.
     // ---------------------------------------------------------------
     match /calls/{callId} {
@@ -291,8 +362,8 @@ service cloud.firestore {
 
     // ---------------------------------------------------------------
     // Permanent Admin Vault: write-once immutable archive of messages,
-    // images, voice packs and profile snapshots. Never editable or
-    // deletable by chat users; readable only by Admin.
+    // images, voice packs, videos and profile snapshots. Never editable
+    // or deletable by chat users; readable only by Admin.
     // ---------------------------------------------------------------
     match /adminVault/{vaultId} {
       allow read: if isAdmin();
@@ -300,10 +371,24 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.actorUid == request.auth.uid
         && request.resource.data.kind in [
-          'chat_message', 'voice_message', 'message_edit', 'profile_snapshot'
+          'chat_message', 'voice_message', 'video_message', 'message_edit', 'profile_snapshot'
         ];
 
       allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // Admin-configured Google Drive Video Bridge endpoint reference.
+    // Only Admin can write; server Edge functions read non-secret URL
+    // while keeping BRIDGE_SECRET strictly server-side in Vercel env.
+    // ---------------------------------------------------------------
+    match /appSettings/videoDrive {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasOnly(['scriptUrl', 'updatedAt'])
+        && request.resource.data.scriptUrl is string
+        && request.resource.data.scriptUrl.size() <= 400;
     }
 
     // Everything else is closed by default.

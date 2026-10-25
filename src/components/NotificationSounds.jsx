@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { chatService } from "../services/chatService";
 import { voiceService } from "../services/voiceService";
+import { videoService } from "../services/videoService";
 import { playSound } from "../utils/sounds";
 import { toDate } from "../utils/format";
 
@@ -38,8 +39,10 @@ export function NotificationSounds({ uid }) {
         let active = true;
         let chatsReady = false;
         let voiceReady = false;
+        let videoReady = false;
         const chats = new Map();
         const voiceChats = new Map();
+        const videoChats = new Map();
 
         const stopChats = chatService.subscribeChats(
             uid,
@@ -67,10 +70,24 @@ export function NotificationSounds({ uid }) {
             () => {}
         );
 
+        const stopVideo = videoService.subscribeChats(
+            uid,
+            (list, meta) => {
+                if (!active || meta?.fromCache) return;
+                const ready = videoReady;
+                videoReady = true;
+                if (collectIncoming(list, videoChats, ready, uid)) {
+                    playSound("messageReceived");
+                }
+            },
+            () => {}
+        );
+
         return () => {
             active = false;
             stopChats();
             stopVoice();
+            stopVideo();
         };
     }, [uid]);
 

@@ -6,6 +6,15 @@ const MIME_EXTENSIONS = {
     "image/gif": "gif",
     "audio/webm": "webm",
     "video/webm": "webm",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/x-m4v": "m4v",
+    "video/x-matroska": "mkv",
+    "video/ogg": "ogv",
+    "video/x-msvideo": "avi",
+    "video/mpeg": "mpeg",
+    "video/3gpp": "3gp",
+    "video/3gpp2": "3g2",
     "audio/mp4": "m4a",
     "audio/x-m4a": "m4a",
     "audio/m4a": "m4a",
@@ -25,6 +34,7 @@ export function extensionForMime(mime) {
     const value = String(mime || "").split(";")[0].trim().toLowerCase();
     if (MIME_EXTENSIONS[value]) return MIME_EXTENSIONS[value];
     if (value.startsWith("image/")) return "img";
+    if (value.startsWith("video/")) return "mp4";
     if (value.startsWith("audio/")) return "audio";
     return "bin";
 }
@@ -89,6 +99,87 @@ export async function getAudioDuration(source) {
 
     if (viaElement > 0) return viaElement;
     return decodeDurationFallback(source);
+}
+
+/**
+ * Extracts duration (seconds) and a lightweight compressed JPEG poster data URL
+ * (~10-25 KB) from a local video File so video cards show a thumbnail immediately.
+ */
+export async function extractVideoMetadata(file) {
+    if (typeof document === "undefined" || typeof URL.createObjectURL !== "function") {
+        return { duration: 0, posterUrl: "" };
+    }
+
+    return new Promise((resolve) => {
+        const objectUrl = URL.createObjectURL(file);
+        const video = document.createElement("video");
+        let settled = false;
+
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            video.removeAttribute("src");
+            video.load();
+            URL.revokeObjectURL(objectUrl);
+            resolve(result);
+        };
+
+        const timer = window.setTimeout(() => {
+            finish({ duration: 0, posterUrl: "" });
+        }, 6000);
+
+        video.preload = "metadata";
+        video.muted = true;
+        video.playsInline = true;
+
+        const capturePoster = (duration) => {
+            try {
+                const vw = video.videoWidth || 0;
+                const vh = video.videoHeight || 0;
+                if (!vw || !vh) {
+                    finish({ duration, posterUrl: "" });
+                    return;
+                }
+                const maxSide = 440;
+                const scale = Math.min(1, maxSide / Math.max(vw, vh));
+                const width = Math.max(1, Math.round(vw * scale));
+                const height = Math.max(1, Math.round(vh * scale));
+                const canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                    finish({ duration, posterUrl: "" });
+                    return;
+                }
+                ctx.drawImage(video, 0, 0, width, height);
+                const posterUrl = canvas.toDataURL("image/jpeg", 0.65);
+                finish({
+                    duration,
+                    posterUrl: posterUrl.length < 60_000 ? posterUrl : ""
+                });
+            } catch {
+                finish({ duration, posterUrl: "" });
+            }
+        };
+
+        video.onloadedmetadata = () => {
+            const rawDuration =
+                Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+            const targetTime = rawDuration > 0.6 ? Math.min(1.0, rawDuration * 0.15) : 0.05;
+
+            video.onseeked = () => capturePoster(rawDuration);
+            try {
+                video.currentTime = targetTime;
+            } catch {
+                capturePoster(rawDuration);
+            }
+        };
+
+        video.onerror = () => finish({ duration: 0, posterUrl: "" });
+        video.src = objectUrl;
+    });
 }
 
 export function formatBytes(bytes) {

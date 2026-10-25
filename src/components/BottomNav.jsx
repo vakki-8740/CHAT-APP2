@@ -1,18 +1,19 @@
 import { NavLink } from "react-router-dom";
-import { Mic, MessageSquareText, UserRound } from "lucide-react";
+import { Film, Mic, MessageSquareText, UserRound } from "lucide-react";
 import { isStorageConfigured } from "../config/env";
 import { cn } from "../utils/cn";
 
 const ITEMS = [
     { to: "/", label: "Chats", icon: MessageSquareText, end: true },
     { to: "/voice", label: "Voice", icon: Mic, end: false },
+    { to: "/video", label: "Video", icon: Film, end: false },
     { to: "/profile", label: "Profile", icon: UserRound, end: false }
 ];
 
 export function BottomNav() {
     const items = isStorageConfigured
         ? ITEMS
-        : ITEMS.filter((item) => item.to !== "/voice");
+        : ITEMS.filter((item) => item.to !== "/voice" && item.to !== "/video");
 
     return (
         <nav

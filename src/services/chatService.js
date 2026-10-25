@@ -42,6 +42,10 @@ export function otherParticipant(chat, uid) {
 export function previewForMessage(type, text) {
     if (type === "image") return "Photo";
     if (type === "voice") return "Voice message";
+    if (type === "video") {
+        const clean = String(text || "").replace(/\s+/g, " ").trim().slice(0, 90);
+        return clean ? `Video · ${clean}` : "Video";
+    }
     return String(text || "").replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
@@ -166,6 +170,11 @@ export function createThreadService(collectionName) {
             text = "",
             imageUrl = "",
             audioUrl = "",
+            videoUrl = "",
+            posterUrl = "",
+            fileName = "",
+            fileSize = 0,
+            driveFileId = "",
             duration = 0,
             replyTo = null,
             chatExists = false
@@ -183,34 +192,48 @@ export function createThreadService(collectionName) {
                 throw new AppError("validation/message", "Image URL is missing.");
             if (type === "voice" && !audioUrl)
                 throw new AppError("validation/message", "Voice URL is missing.");
+            if (type === "video" && !videoUrl)
+                throw new AppError("validation/message", "Video URL is missing.");
 
             if (!chatExists) await this.ensureChat(uid, otherUid);
             const chatId = makeChatId(uid, otherUid);
             const id = messageId || this.newMessageId(uid, otherUid);
             const preview = previewForMessage(type, value);
 
+            const normalizedReply = replyTo
+                ? {
+                      id: String(replyTo.id || ""),
+                      senderId: String(replyTo.senderId || ""),
+                      type: String(replyTo.type || "text"),
+                      text: String(replyTo.text || "").slice(0, 160)
+                  }
+                : null;
+
+            const messageDoc = {
+                senderId: uid,
+                type,
+                text: value,
+                imageUrl,
+                audioUrl,
+                duration: Number(duration) || 0,
+                replyTo: normalizedReply,
+                reactions: {},
+                hiddenFor: [],
+                deletedForEveryone: false,
+                createdAt: serverTimestamp()
+            };
+
+            if (type === "video" || collectionName === "videoChats") {
+                messageDoc.videoUrl = String(videoUrl || "");
+                messageDoc.posterUrl = String(posterUrl || "");
+                messageDoc.fileName = String(fileName || "").slice(0, 160);
+                messageDoc.fileSize = Number(fileSize) || 0;
+                messageDoc.driveFileId = String(driveFileId || "");
+            }
+
             try {
                 const batch = writeBatch(db);
-                batch.set(messageRef(chatId, id), {
-                    senderId: uid,
-                    type,
-                    text: value,
-                    imageUrl,
-                    audioUrl,
-                    duration: Number(duration) || 0,
-                    replyTo: replyTo
-                        ? {
-                              id: String(replyTo.id || ""),
-                              senderId: String(replyTo.senderId || ""),
-                              type: String(replyTo.type || "text"),
-                              text: String(replyTo.text || "").slice(0, 160)
-                          }
-                        : null,
-                    reactions: {},
-                    hiddenFor: [],
-                    deletedForEveryone: false,
-                    createdAt: serverTimestamp()
-                });
+                batch.set(messageRef(chatId, id), messageDoc);
                 batch.update(chatRef(uid, otherUid), {
                     lastMessage: {
                         id,
@@ -236,15 +259,13 @@ export function createThreadService(collectionName) {
                     text: value,
                     imageUrl,
                     audioUrl,
+                    videoUrl,
+                    posterUrl,
+                    fileName,
+                    fileSize: Number(fileSize) || 0,
+                    driveFileId,
                     duration: Number(duration) || 0,
-                    replyTo: replyTo
-                        ? {
-                              id: String(replyTo.id || ""),
-                              senderId: String(replyTo.senderId || ""),
-                              type: String(replyTo.type || "text"),
-                              text: String(replyTo.text || "").slice(0, 160)
-                          }
-                        : null
+                    replyTo: normalizedReply
                 });
                 return id;
             } catch (error) {
@@ -301,7 +322,7 @@ export function createThreadService(collectionName) {
             requireDb();
             const chatId = makeChatId(uid, otherUid);
             try {
-                await updateDoc(messageRef(chatId, messageId), {
+                const patch = {
                     deletedForEveryone: true,
                     text: "",
                     imageUrl: "",
@@ -309,7 +330,14 @@ export function createThreadService(collectionName) {
                     duration: 0,
                     reactions: {},
                     editedAt: serverTimestamp()
-                });
+                };
+                if (collectionName === "videoChats") {
+                    patch.videoUrl = "";
+                    patch.posterUrl = "";
+                    patch.fileName = "";
+                    patch.fileSize = 0;
+                }
+                await updateDoc(messageRef(chatId, messageId), patch);
                 const snap = await getDoc(chatRef(uid, otherUid));
                 if (snap.exists() && snap.data().lastMessage?.id === messageId) {
                     await updateDoc(chatRef(uid, otherUid), {

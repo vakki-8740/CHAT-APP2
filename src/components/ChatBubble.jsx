@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import {
     AlertCircle,
     Ban,
     Check,
     CheckCheck,
     Clock3,
+    ImageOff,
     MoreHorizontal,
     RotateCw
 } from "lucide-react";
@@ -37,6 +39,11 @@ export function ChatBubble({
     const sending = message.status === "sending" || message.status === "uploading";
     const showReceipt = mine && !deleted && !failed && !sending;
     const reactions = mergeReactions(message.reactions);
+    const [imageBroken, setImageBroken] = useState(false);
+
+    useEffect(() => {
+        setImageBroken(false);
+    }, [message.imageUrl]);
 
     return (
         <div className={cn("flex w-full items-end gap-1.5", mine ? "justify-end" : "justify-start")}>
@@ -84,19 +91,28 @@ export function ChatBubble({
                             <Ban className="size-3.5 shrink-0" /> This message was deleted
                         </p>
                     ) : message.type === "image" ? (
-                        <button
-                            type="button"
-                            onClick={() => message.imageUrl && onOpenImage?.(message.imageUrl)}
-                            className="block overflow-hidden rounded-lg"
-                            aria-label="Open photo"
-                        >
-                            <img
-                                src={message.imageUrl}
-                                alt={message.text || "Shared photo"}
-                                className="max-h-72 w-auto max-w-full object-cover"
-                                loading="lazy"
-                            />
-                        </button>
+                        imageBroken || !message.imageUrl ? (
+                            <p className="flex items-center gap-1.5 italic opacity-80">
+                                <ImageOff className="size-3.5 shrink-0" /> Photo unavailable
+                            </p>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    message.imageUrl && onOpenImage?.(message.imageUrl)
+                                }
+                                className="block overflow-hidden rounded-lg"
+                                aria-label="Open photo"
+                            >
+                                <img
+                                    src={message.imageUrl}
+                                    alt={message.text || "Shared photo"}
+                                    className="max-h-72 w-auto max-w-full object-cover"
+                                    loading="lazy"
+                                    onError={() => setImageBroken(true)}
+                                />
+                            </button>
+                        )
                     ) : message.type === "voice" ? (
                         <VoicePlayer
                             src={message.audioUrl}

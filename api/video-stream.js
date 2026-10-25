@@ -78,7 +78,7 @@ export default async function handler(request) {
     const contentType = upstream.headers.get("content-type") || "video/mp4";
     headers.set("Content-Type", contentType);
     headers.set("Accept-Ranges", "bytes");
-    headers.set("Cache-Control", "private, max-age=86400");
+    headers.set("Cache-Control", forceDownload ? "no-store" : "private, max-age=300");
     headers.set("X-Content-Type-Options", "nosniff");
 
     const contentLength = upstream.headers.get("content-length");

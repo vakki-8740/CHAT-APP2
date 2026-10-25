@@ -106,7 +106,12 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
 
     return (
         <div className={cn("flex min-w-[190px] items-center gap-2.5 py-0.5")}>
-            <audio ref={audioRef} src={resolvedSrc || undefined} preload="metadata" />
+            <audio
+                ref={audioRef}
+                src={resolvedSrc || undefined}
+                preload="metadata"
+                controlsList="nodownload"
+            />
             <button
                 type="button"
                 onClick={toggle}

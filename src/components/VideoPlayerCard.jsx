@@ -80,8 +80,10 @@ export function VideoPlayerCard({
                         src={effectiveSrc}
                         poster={poster || undefined}
                         controls={!uploading}
+                        controlsList="nodownload"
                         playsInline
                         preload="metadata"
+                        onContextMenu={(e) => e.preventDefault()}
                         onError={() => {
                             if (!uploading) setFailed(true);
                         }}

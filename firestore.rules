@@ -391,6 +391,19 @@ service cloud.firestore {
         && request.resource.data.scriptUrl.size() <= 400;
     }
 
+    // ---------------------------------------------------------------
+    // Admin-configured Telegram Unlock Alert settings (AES-256-GCM
+    // encrypted Bot Token & Channel Chat ID; decrypted only server-side).
+    // ---------------------------------------------------------------
+    match /appSettings/telegramAlert {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasOnly(['encrypted', 'updatedAt'])
+        && request.resource.data.encrypted is string
+        && request.resource.data.encrypted.size() <= 4096;
+    }
+
     // Everything else is closed by default.
     match /{document=**} {
       allow read, write: if false;

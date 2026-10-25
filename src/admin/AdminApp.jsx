@@ -1,0 +1,1268 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+    AlertTriangle,
+    ArrowLeft,
+    CheckCircle2,
+    Copy,
+    Database,
+    Download,
+    Image as ImageIcon,
+    LayoutDashboard,
+    Lock,
+    MessageSquare,
+    Mic,
+    Phone,
+    PhoneCall,
+    RefreshCw,
+    ShieldAlert,
+    ShieldCheck,
+    Users,
+    Video
+} from "lucide-react";
+import firestoreRulesRaw from "../../firestore.rules?raw";
+import { ThemeProvider } from "../context/ThemeContext";
+import { ToastProvider, useToast } from "../context/ToastContext";
+import { BrandMark } from "../components/BrandMark";
+import { ThemeToggle } from "../components/ThemeToggle";
+import { Avatar } from "../components/Avatar";
+import { SearchBar } from "../components/SearchBar";
+import { VoicePlayer } from "../components/VoicePlayer";
+import { ImageLightbox } from "../components/ImageLightbox";
+import { Spinner } from "../components/LoadingScreen";
+import { isFirebaseConfigured } from "../config/env";
+import { isOnline } from "../services/userService";
+import { extensionForMime } from "../utils/files";
+import { dataUrlToObjectUrl } from "../utils/media";
+import { formatClock, formatDayLabel, formatTime, toDate } from "../utils/format";
+import { cn } from "../utils/cn";
+import SetupPage from "../pages/SetupPage";
+import AdminLoginPage from "./AdminLoginPage";
+import { signOutAdmin } from "./adminAuth";
+import { useAdminData } from "./adminDataService";
+
+const TABS = [
+    { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "users", label: "Users", icon: Users },
+    { id: "chats", label: "Chats", icon: MessageSquare },
+    { id: "images", label: "Images", icon: ImageIcon },
+    { id: "voice", label: "Voice Packs", icon: Mic },
+    { id: "calls", label: "Calls", icon: PhoneCall }
+];
+
+function formatDateTime(value) {
+    const date = toDate(value);
+    if (!date) return "—";
+    return `${formatDayLabel(date)} · ${formatTime(date)}`;
+}
+
+function triggerMediaDownload(src, baseName = "file") {
+    if (!src) return;
+    if (src.startsWith("data:")) {
+        const mime = src.slice(5).split(";")[0];
+        const ext = extensionForMime(mime);
+        const objectUrl = dataUrlToObjectUrl(src);
+        if (!objectUrl) return;
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = `${baseName}.${ext === "bin" ? "dat" : ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
+        return;
+    }
+    const a = document.createElement("a");
+    a.href = src;
+    a.target = "_blank";
+    a.rel = "noreferrer";
+    a.download = baseName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
+function serializeTimestamp(value) {
+    const date = toDate(value);
+    return date ? date.toISOString() : null;
+}
+
+function AdminWorkspace({ onLock }) {
+    const toast = useToast();
+    const {
+        users,
+        usersById,
+        chatThreads,
+        voicePacks,
+        allImages,
+        calls,
+        vaultItems,
+        totalTextMessages,
+        loading,
+        rulesNeedSync,
+        reload
+    } = useAdminData(true);
+
+    const [activeTab, setActiveTab] = useState("overview");
+    const [selectedChatId, setSelectedChatId] = useState("");
+    const [userFilterUid, setUserFilterUid] = useState("");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [imageFilter, setImageFilter] = useState("all");
+    const [lightboxSrc, setLightboxSrc] = useState("");
+
+    const onlineCount = useMemo(
+        () => users.filter((u) => isOnline(u)).length,
+        [users]
+    );
+
+    function userLabel(uid) {
+        if (!uid) return "Unknown";
+        const u = usersById.get(uid);
+        return u?.displayName || uid.slice(0, 8);
+    }
+
+    function userMobile(uid) {
+        if (!uid) return "";
+        return usersById.get(uid)?.mobileNumber || "";
+    }
+
+    function userAvatar(uid) {
+        if (!uid) return "";
+        return usersById.get(uid)?.photoURL || "";
+    }
+
+    function matchesSearch(uidA, uidB = "", extraText = "") {
+        const needle = searchQuery.trim().toLowerCase();
+        if (!needle) return true;
+        const digits = needle.replace(/\D/g, "");
+        const hay = [
+            userLabel(uidA),
+            userMobile(uidA),
+            uidA,
+            uidB ? userLabel(uidB) : "",
+            uidB ? userMobile(uidB) : "",
+            uidB,
+            extraText
+        ]
+            .join(" ")
+            .toLowerCase();
+        if (hay.includes(needle)) return true;
+        if (digits && (userMobile(uidA).includes(digits) || userMobile(uidB).includes(digits))) {
+            return true;
+        }
+        return false;
+    }
+
+    function copyRules() {
+        if (!navigator.clipboard?.writeText) {
+            toast.error("Clipboard is not available in this browser.");
+            return;
+        }
+        navigator.clipboard
+            .writeText(firestoreRulesRaw)
+            .then(() => toast.success("Firestore rules copied! Paste & Publish in Firebase Console."))
+            .catch(() => toast.error("Could not copy rules."));
+    }
+
+    function exportBackupJson() {
+        const payload = {
+            exportedAt: new Date().toISOString(),
+            summary: {
+                users: users.length,
+                chatThreads: chatThreads.length,
+                messages: totalTextMessages,
+                images: allImages.length,
+                voicePacks: voicePacks.length,
+                calls: calls.length,
+                vaultRecords: vaultItems.length
+            },
+            users: users.map((u) => ({
+                ...u,
+                createdAt: serializeTimestamp(u.createdAt),
+                updatedAt: serializeTimestamp(u.updatedAt),
+                lastSeen: serializeTimestamp(u.lastSeen)
+            })),
+            chatThreads: chatThreads.map((t) => ({
+                id: t.id,
+                participants: t.participants,
+                updatedAt: serializeTimestamp(t.updatedAt),
+                messages: t.messages.map((m) => ({
+                    ...m,
+                    createdAt: serializeTimestamp(m.createdAt),
+                    editedAt: serializeTimestamp(m.editedAt)
+                }))
+            })),
+            voicePacks: voicePacks.map((v) => ({
+                ...v,
+                createdAt: serializeTimestamp(v.createdAt),
+                editedAt: serializeTimestamp(v.editedAt)
+            })),
+            calls: calls.map((c) => ({
+                ...c,
+                createdAt: serializeTimestamp(c.createdAt),
+                updatedAt: serializeTimestamp(c.updatedAt),
+                endedAt: serializeTimestamp(c.endedAt)
+            }))
+        };
+
+        const blob = new Blob([JSON.stringify(payload, null, 2)], {
+            type: "application/json"
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `chat-app2-admin-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+        toast.success("Full backup JSON downloaded.");
+    }
+
+    const filteredUsers = useMemo(
+        () =>
+            users.filter((u) =>
+                matchesSearch(u.uid, "", `${u.displayName || ""} ${u.bio || ""}`)
+            ),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [users, searchQuery, usersById]
+    );
+
+    const filteredThreads = useMemo(
+        () =>
+            chatThreads.filter((thread) => {
+                const [a = "", b = ""] = thread.participants || thread.id.split("_");
+                if (userFilterUid && a !== userFilterUid && b !== userFilterUid) {
+                    return false;
+                }
+                const lastText = thread.lastMessage?.text || "";
+                return matchesSearch(a, b, lastText);
+            }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [chatThreads, userFilterUid, searchQuery, usersById]
+    );
+
+    const activeThread = useMemo(
+        () =>
+            chatThreads.find((t) => t.id === selectedChatId) ||
+            filteredThreads[0] ||
+            null,
+        [chatThreads, selectedChatId, filteredThreads]
+    );
+
+    const filteredImages = useMemo(
+        () =>
+            allImages.filter((item) => {
+                if (imageFilter !== "all" && item.source !== imageFilter) return false;
+                if (
+                    userFilterUid &&
+                    item.senderId !== userFilterUid &&
+                    item.receiverId !== userFilterUid
+                ) {
+                    return false;
+                }
+                return matchesSearch(item.senderId, item.receiverId, item.source);
+            }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [allImages, imageFilter, userFilterUid, searchQuery, usersById]
+    );
+
+    const filteredVoice = useMemo(
+        () =>
+            voicePacks.filter((item) => {
+                if (
+                    userFilterUid &&
+                    item.senderId !== userFilterUid &&
+                    item.receiverId !== userFilterUid
+                ) {
+                    return false;
+                }
+                return matchesSearch(item.senderId, item.receiverId);
+            }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [voicePacks, userFilterUid, searchQuery, usersById]
+    );
+
+    const filteredCalls = useMemo(
+        () =>
+            calls.filter((call) => {
+                if (
+                    userFilterUid &&
+                    call.callerId !== userFilterUid &&
+                    call.calleeId !== userFilterUid
+                ) {
+                    return false;
+                }
+                return matchesSearch(call.callerId, call.calleeId, call.status || "");
+            }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [calls, userFilterUid, searchQuery, usersById]
+    );
+
+    function openTabForUser(tabId, targetUid) {
+        setUserFilterUid(targetUid);
+        setSearchQuery("");
+        setSelectedChatId("");
+        setActiveTab(tabId);
+    }
+
+    return (
+        <div className="min-h-[100dvh] bg-bg text-ink">
+            {/* Top Header */}
+            <header className="safe-top sticky top-0 z-30 border-b border-line bg-card/95 backdrop-blur">
+                <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                        <BrandMark size={32} withName subtitle="Permanent Admin Vault" />
+                        <span className="hidden items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success sm:inline-flex">
+                            <span className="size-1.5 rounded-full bg-success" />
+                            Live
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={exportBackupJson}
+                            className="btn btn-outline btn-sm hidden sm:inline-flex"
+                            title="Download full permanent JSON backup"
+                        >
+                            <Download className="size-3.5" /> Backup JSON
+                        </button>
+                        <button
+                            type="button"
+                            onClick={reload}
+                            className="flex size-9 items-center justify-center rounded-full text-muted hover:bg-bg hover:text-accent"
+                            aria-label="Refresh data"
+                            title="Refresh"
+                        >
+                            <RefreshCw className="size-4" />
+                        </button>
+                        <ThemeToggle />
+                        <button
+                            type="button"
+                            onClick={onLock}
+                            className="btn btn-outline btn-sm text-danger hover:border-danger hover:text-danger"
+                            title="Lock Admin Panel"
+                        >
+                            <Lock className="size-3.5" />
+                            <span className="hidden sm:inline">Lock</span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Navigation Tabs */}
+                <div className="mx-auto max-w-6xl overflow-x-auto px-4 scrollbar-thin">
+                    <nav className="flex items-center gap-1 pb-2" aria-label="Admin sections">
+                        {TABS.map((tab) => {
+                            const Icon = tab.icon;
+                            const active = activeTab === tab.id;
+                            const count =
+                                tab.id === "users"
+                                    ? users.length
+                                    : tab.id === "chats"
+                                      ? chatThreads.length
+                                      : tab.id === "images"
+                                        ? allImages.length
+                                        : tab.id === "voice"
+                                          ? voicePacks.length
+                                          : tab.id === "calls"
+                                            ? calls.length
+                                            : null;
+
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={cn(
+                                        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                                        active
+                                            ? "bg-accent text-white"
+                                            : "text-muted hover:bg-bg hover:text-ink"
+                                    )}
+                                >
+                                    <Icon className="size-3.5" />
+                                    <span>{tab.label}</span>
+                                    {count !== null ? (
+                                        <span
+                                            className={cn(
+                                                "rounded-full px-1.5 py-0.2 text-[10px]",
+                                                active
+                                                    ? "bg-white/20 text-white"
+                                                    : "bg-bg text-muted"
+                                            )}
+                                        >
+                                            {count}
+                                        </span>
+                                    ) : null}
+                                </button>
+                            );
+                        })}
+                    </nav>
+                </div>
+            </header>
+
+            <main className="mx-auto max-w-6xl px-4 py-5 pb-16">
+                {/* Rules warning banner if Firebase Console rules block cross-user reads */}
+                {rulesNeedSync ? (
+                    <div className="mb-5 rounded-xl border border-warn/40 bg-warn/10 p-4">
+                        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                            <div className="flex items-start gap-2.5">
+                                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warn" />
+                                <div>
+                                    <h2 className="text-sm font-bold">
+                                        Publish Updated Firestore Rules for Full Cross-User Access
+                                    </h2>
+                                    <p className="mt-0.5 text-xs leading-relaxed text-muted">
+                                        Firebase Console abhi purane rules chala raha hai jisme private chats sirf participants ko dikhte hain. Saare users ke chats, images aur voice packs Admin Panel me dekhne ke liye neeche button se rules copy karein aur{" "}
+                                        <strong>Firebase Console → Firestore Database → Rules</strong> me paste karke <strong>Publish</strong> daba dein.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={copyRules}
+                                className="btn btn-primary btn-sm shrink-0"
+                            >
+                                <Copy className="size-3.5" /> Copy Firestore Rules
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
+
+                {/* Active user filter chip */}
+                {userFilterUid && activeTab !== "overview" && activeTab !== "users" ? (
+                    <div className="mb-4 flex items-center justify-between gap-2 rounded-lg border border-accent/30 bg-accent-soft px-3 py-2 text-xs">
+                        <span>
+                            Showing records for{" "}
+                            <strong className="text-accent">{userLabel(userFilterUid)}</strong>{" "}
+                            ({userMobile(userFilterUid) || userFilterUid.slice(0, 8)})
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setUserFilterUid("")}
+                            className="font-semibold text-accent hover:underline"
+                        >
+                            Show all users
+                        </button>
+                    </div>
+                ) : null}
+
+                {/* Shared search bar for list tabs */}
+                {activeTab !== "overview" ? (
+                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="w-full sm:max-w-md">
+                            <SearchBar
+                                value={searchQuery}
+                                onChange={setSearchQuery}
+                                placeholder="Search by user name, mobile number, or message…"
+                            />
+                        </div>
+                        {activeTab === "images" ? (
+                            <div className="flex items-center gap-1">
+                                {[
+                                    { id: "all", label: "All Photos" },
+                                    { id: "chat", label: "Chat Photos" },
+                                    { id: "profile", label: "Profile Photos" }
+                                ].map((f) => (
+                                    <button
+                                        key={f.id}
+                                        type="button"
+                                        onClick={() => setImageFilter(f.id)}
+                                        className={cn(
+                                            "rounded-full px-3 py-1 text-xs font-semibold",
+                                            imageFilter === f.id
+                                                ? "bg-accent text-white"
+                                                : "border border-line bg-card text-muted hover:text-ink"
+                                        )}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                ) : null}
+
+                {loading ? (
+                    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+                        <Spinner className="size-5 text-accent" /> Loading permanent Admin data…
+                    </div>
+                ) : null}
+
+                {/* ==================== OVERVIEW TAB ==================== */}
+                {!loading && activeTab === "overview" ? (
+                    <div className="space-y-5">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                            <StatCard
+                                icon={Users}
+                                label="Registered Users"
+                                value={users.length}
+                                sub={`${onlineCount} online now`}
+                                onClick={() => setActiveTab("users")}
+                            />
+                            <StatCard
+                                icon={MessageSquare}
+                                label="Text Chats"
+                                value={chatThreads.length}
+                                sub={`${totalTextMessages} total messages`}
+                                onClick={() => setActiveTab("chats")}
+                            />
+                            <StatCard
+                                icon={ImageIcon}
+                                label="Saved Photos"
+                                value={allImages.length}
+                                sub="Chat & profile photos"
+                                onClick={() => setActiveTab("images")}
+                            />
+                            <StatCard
+                                icon={Mic}
+                                label="Voice Packs"
+                                value={voicePacks.length}
+                                sub="Playable anytime"
+                                onClick={() => setActiveTab("voice")}
+                            />
+                            <StatCard
+                                icon={PhoneCall}
+                                label="Call Logs"
+                                value={calls.length}
+                                sub="Voice & video calls"
+                                onClick={() => setActiveTab("calls")}
+                            />
+                            <StatCard
+                                icon={Database}
+                                label="Vault Archive"
+                                value={vaultItems.length}
+                                sub="Anti-delete records"
+                            />
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            {/* Permanent Vault & Backup Card */}
+                            <section className="panel p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-center gap-2.5">
+                                        <span className="flex size-9 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                                            <ShieldCheck className="size-5" />
+                                        </span>
+                                        <div>
+                                            <h2 className="text-sm font-bold">
+                                                Permanent Data & Backup
+                                            </h2>
+                                            <p className="text-xs text-muted">
+                                                Photos, messages & voice packs stay permanently stored in Firestore + Admin Vault.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={exportBackupJson}
+                                        className="btn btn-primary btn-sm"
+                                    >
+                                        <Download className="size-3.5" /> Export Full Backup (JSON)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={copyRules}
+                                        className="btn btn-outline btn-sm"
+                                    >
+                                        <Copy className="size-3.5" /> Copy Firestore Rules
+                                    </button>
+                                </div>
+
+                                <div className="mt-3 flex items-center gap-2 text-xs">
+                                    {rulesNeedSync ? (
+                                        <span className="inline-flex items-center gap-1.5 text-warn">
+                                            <ShieldAlert className="size-4" />
+                                            Rules update needed in Firebase Console for cross-user chat access
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1.5 text-success">
+                                            <CheckCircle2 className="size-4" />
+                                            Connected to Firebase Firestore in real time
+                                        </span>
+                                    )}
+                                </div>
+                            </section>
+
+                            {/* Latest Images Quick Preview */}
+                            <section className="panel p-4">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-sm font-bold">Recent Photos</h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab("images")}
+                                        className="text-xs font-semibold text-accent hover:underline"
+                                    >
+                                        View all ({allImages.length})
+                                    </button>
+                                </div>
+                                {allImages.length === 0 ? (
+                                    <p className="mt-4 text-xs text-muted">
+                                        No photos stored yet.
+                                    </p>
+                                ) : (
+                                    <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
+                                        {allImages.slice(0, 6).map((img) => (
+                                            <button
+                                                key={img.id}
+                                                type="button"
+                                                onClick={() => setLightboxSrc(img.url)}
+                                                className="group relative aspect-square overflow-hidden rounded-lg border border-line bg-bg"
+                                            >
+                                                <img
+                                                    src={img.url}
+                                                    alt=""
+                                                    className="size-full object-cover transition-transform group-hover:scale-105"
+                                                    loading="lazy"
+                                                />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </section>
+                        </div>
+
+                        {/* Recent Voice Packs Preview */}
+                        <section className="panel p-4">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-sm font-bold">Recent Voice Packs</h2>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab("voice")}
+                                    className="text-xs font-semibold text-accent hover:underline"
+                                >
+                                    View all ({voicePacks.length})
+                                </button>
+                            </div>
+                            {voicePacks.length === 0 ? (
+                                <p className="mt-3 text-xs text-muted">
+                                    No voice packs stored yet.
+                                </p>
+                            ) : (
+                                <div className="mt-3 divide-y divide-line">
+                                    {voicePacks.slice(0, 4).map((vp) => (
+                                        <div
+                                            key={`${vp.chatId}_${vp.id}`}
+                                            className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="truncate text-xs font-semibold">
+                                                    {userLabel(vp.senderId)} →{" "}
+                                                    {userLabel(vp.receiverId)}
+                                                </p>
+                                                <p className="text-[11px] text-muted">
+                                                    {formatDateTime(vp.createdAt)}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <VoicePlayer
+                                                    src={vp.audioUrl}
+                                                    duration={vp.duration}
+                                                />
+                                                {vp.audioUrl ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            triggerMediaDownload(
+                                                                vp.audioUrl,
+                                                                `voice-${vp.id}`
+                                                            )
+                                                        }
+                                                        className="flex size-8 items-center justify-center rounded-full border border-line text-muted hover:border-accent hover:text-accent"
+                                                        title="Download audio"
+                                                    >
+                                                        <Download className="size-3.5" />
+                                                    </button>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </section>
+                    </div>
+                ) : null}
+
+                {/* ==================== USERS TAB ==================== */}
+                {!loading && activeTab === "users" ? (
+                    filteredUsers.length === 0 ? (
+                        <EmptyBox label="No matching users found." />
+                    ) : (
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {filteredUsers.map((user) => {
+                                const online = isOnline(user);
+                                return (
+                                    <div key={user.uid} className="panel flex flex-col justify-between p-4">
+                                        <div>
+                                            <div className="flex items-start gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        user.photoURL && setLightboxSrc(user.photoURL)
+                                                    }
+                                                    className="shrink-0"
+                                                    title={
+                                                        user.photoURL
+                                                            ? "Click to enlarge photo"
+                                                            : undefined
+                                                    }
+                                                >
+                                                    <Avatar
+                                                        name={user.displayName}
+                                                        src={user.photoURL}
+                                                        uid={user.uid}
+                                                        size="md"
+                                                        online={online}
+                                                    />
+                                                </button>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className="truncate text-sm font-bold">
+                                                            {user.displayName || "Unnamed"}
+                                                        </h3>
+                                                        {online ? (
+                                                            <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">
+                                                                Online
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                    <p className="mt-0.5 flex items-center gap-1 text-xs text-muted">
+                                                        <Phone className="size-3" />
+                                                        {user.mobileNumber || "No number"}
+                                                    </p>
+                                                    {user.bio ? (
+                                                        <p className="mt-1.5 line-clamp-2 text-xs text-ink/85">
+                                                            {user.bio}
+                                                        </p>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-3 space-y-1 border-t border-line pt-2.5 text-[11px] text-muted">
+                                                <p>
+                                                    <strong>Last seen:</strong>{" "}
+                                                    {formatDateTime(user.lastSeen)}
+                                                </p>
+                                                <p>
+                                                    <strong>Joined:</strong>{" "}
+                                                    {formatDateTime(user.createdAt)}
+                                                </p>
+                                                <p className="flex items-center justify-between gap-2">
+                                                    <span className="truncate font-mono text-[10px]">
+                                                        UID: {user.uid}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            navigator.clipboard
+                                                                ?.writeText(user.uid)
+                                                                .then(() =>
+                                                                    toast.success("UID copied.")
+                                                                );
+                                                        }}
+                                                        className="text-accent hover:underline"
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => openTabForUser("chats", user.uid)}
+                                                className="btn btn-outline btn-sm text-xs"
+                                            >
+                                                <MessageSquare className="size-3.5" /> Chats
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => openTabForUser("voice", user.uid)}
+                                                className="btn btn-outline btn-sm text-xs"
+                                            >
+                                                <Mic className="size-3.5" /> Voice Packs
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )
+                ) : null}
+
+                {/* ==================== CHATS TAB ==================== */}
+                {!loading && activeTab === "chats" ? (
+                    filteredThreads.length === 0 ? (
+                        <EmptyBox label="No conversations found." />
+                    ) : (
+                        <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+                            {/* Thread List */}
+                            <div
+                                className={cn(
+                                    "panel max-h-[75dvh] divide-y divide-line overflow-y-auto scrollbar-thin",
+                                    selectedChatId ? "hidden lg:block" : "block"
+                                )}
+                            >
+                                {filteredThreads.map((thread) => {
+                                    const [a = "", b = ""] =
+                                        thread.participants || thread.id.split("_");
+                                    const selected = activeThread?.id === thread.id;
+                                    const imgCount = thread.messages.filter(
+                                        (m) => m.type === "image" && m.imageUrl
+                                    ).length;
+                                    const lastMsg =
+                                        thread.messages[thread.messages.length - 1];
+
+                                    return (
+                                        <button
+                                            key={thread.id}
+                                            type="button"
+                                            onClick={() => setSelectedChatId(thread.id)}
+                                            className={cn(
+                                                "flex w-full flex-col gap-1 px-3.5 py-3 text-left transition-colors",
+                                                selected
+                                                    ? "bg-accent-soft"
+                                                    : "hover:bg-bg"
+                                            )}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <p className="truncate text-xs font-bold">
+                                                    {userLabel(a)} ↔ {userLabel(b)}
+                                                </p>
+                                                <span className="shrink-0 text-[10px] text-muted">
+                                                    {thread.messages.length} msgs
+                                                    {imgCount ? ` · ${imgCount} img` : ""}
+                                                </span>
+                                            </div>
+                                            <p className="truncate text-xs text-muted">
+                                                {lastMsg
+                                                    ? lastMsg.type === "image"
+                                                        ? "📷 Photo"
+                                                        : lastMsg.text || "Message"
+                                                    : thread.lastMessage?.text || "No messages"}
+                                            </p>
+                                            <p className="text-[10px] text-muted">
+                                                {formatDateTime(
+                                                    lastMsg?.createdAt || thread.updatedAt
+                                                )}
+                                            </p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Thread Messages Viewer */}
+                            {activeThread ? (
+                                <div className="panel flex max-h-[75dvh] flex-col overflow-hidden">
+                                    <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedChatId("")}
+                                                className="flex size-8 items-center justify-center rounded-full text-muted hover:bg-bg lg:hidden"
+                                                aria-label="Back to thread list"
+                                            >
+                                                <ArrowLeft className="size-4" />
+                                            </button>
+                                            <div className="min-w-0">
+                                                <h3 className="truncate text-sm font-bold">
+                                                    {(
+                                                        activeThread.participants ||
+                                                        activeThread.id.split("_")
+                                                    )
+                                                        .map((id) => `${userLabel(id)} (${userMobile(id) || id.slice(0, 6)})`)
+                                                        .join("  ↔  ")}
+                                                </h3>
+                                                <p className="text-[11px] text-muted">
+                                                    {activeThread.messages.length} stored messages
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 space-y-3 overflow-y-auto p-4 scrollbar-thin">
+                                        {activeThread.messages.length === 0 ? (
+                                            <p className="py-10 text-center text-xs text-muted">
+                                                No messages in this conversation yet.
+                                            </p>
+                                        ) : (
+                                            activeThread.messages.map((msg) => {
+                                                const reactions = Object.entries(
+                                                    msg.reactions || {}
+                                                );
+                                                return (
+                                                    <div
+                                                        key={msg.id}
+                                                        className="rounded-xl border border-line bg-bg/60 p-3"
+                                                    >
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <Avatar
+                                                                    name={userLabel(msg.senderId)}
+                                                                    src={userAvatar(msg.senderId)}
+                                                                    uid={msg.senderId}
+                                                                    size="xs"
+                                                                />
+                                                                <span className="text-xs font-bold">
+                                                                    {userLabel(msg.senderId)}
+                                                                </span>
+                                                                {userMobile(msg.senderId) ? (
+                                                                    <span className="text-[11px] text-muted">
+                                                                        ({userMobile(msg.senderId)})
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 text-[11px] text-muted">
+                                                                {msg.deletedForEveryone ? (
+                                                                    <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-semibold text-danger">
+                                                                        {msg.preservedFromVault
+                                                                            ? "Deleted in chat · Restored from Vault"
+                                                                            : "Deleted in chat"}
+                                                                    </span>
+                                                                ) : null}
+                                                                {msg.editedAt ? (
+                                                                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent">
+                                                                        Edited
+                                                                    </span>
+                                                                ) : null}
+                                                                <span>
+                                                                    {formatDateTime(msg.createdAt)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        {msg.replyTo ? (
+                                                            <div className="mt-2 rounded border-l-2 border-accent bg-card px-2.5 py-1 text-xs text-muted">
+                                                                Reply to{" "}
+                                                                <strong>
+                                                                    {userLabel(msg.replyTo.senderId)}
+                                                                </strong>
+                                                                : {msg.replyTo.text || msg.replyTo.type}
+                                                            </div>
+                                                        ) : null}
+
+                                                        {msg.type === "image" && msg.imageUrl ? (
+                                                            <div className="mt-2.5 flex items-start gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setLightboxSrc(msg.imageUrl)
+                                                                    }
+                                                                    className="overflow-hidden rounded-lg border border-line"
+                                                                >
+                                                                    <img
+                                                                        src={msg.imageUrl}
+                                                                        alt="Chat attachment"
+                                                                        className="max-h-60 w-auto object-contain"
+                                                                        loading="lazy"
+                                                                    />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        triggerMediaDownload(
+                                                                            msg.imageUrl,
+                                                                            `chat-image-${msg.id}`
+                                                                        )
+                                                                    }
+                                                                    className="flex size-8 items-center justify-center rounded-full border border-line bg-card text-muted hover:border-accent hover:text-accent"
+                                                                    title="Download photo"
+                                                                >
+                                                                    <Download className="size-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        ) : null}
+
+                                                        {msg.text ? (
+                                                            <p className="mt-2 whitespace-pre-wrap break-words text-sm">
+                                                                {msg.text}
+                                                            </p>
+                                                        ) : !msg.imageUrl ? (
+                                                            <p className="mt-2 text-xs italic text-muted">
+                                                                (No content stored prior to Vault)
+                                                            </p>
+                                                        ) : null}
+
+                                                        {msg.originalText ? (
+                                                            <p className="mt-1 text-xs text-muted">
+                                                                <strong>Original before edit:</strong>{" "}
+                                                                {msg.originalText}
+                                                            </p>
+                                                        ) : null}
+
+                                                        {reactions.length > 0 ? (
+                                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                                {reactions.map(([rUid, emoji]) => (
+                                                                    <span
+                                                                        key={rUid}
+                                                                        className="rounded-full border border-line bg-card px-2 py-0.5 text-[11px]"
+                                                                    >
+                                                                        {emoji} {userLabel(rUid)}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+                    )
+                ) : null}
+
+                {/* ==================== IMAGES TAB ==================== */}
+                {!loading && activeTab === "images" ? (
+                    filteredImages.length === 0 ? (
+                        <EmptyBox label="No stored images found." />
+                    ) : (
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                            {filteredImages.map((img) => (
+                                <div
+                                    key={img.id}
+                                    className="panel flex flex-col overflow-hidden"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => setLightboxSrc(img.url)}
+                                        className="group relative aspect-square w-full overflow-hidden bg-bg"
+                                    >
+                                        <img
+                                            src={img.url}
+                                            alt=""
+                                            className="size-full object-cover transition-transform group-hover:scale-105"
+                                            loading="lazy"
+                                        />
+                                        <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                            {img.source === "profile" ? "Profile" : "Chat"}
+                                        </span>
+                                        {img.preservedFromVault ? (
+                                            <span className="absolute right-2 top-2 rounded-full bg-danger px-2 py-0.5 text-[10px] font-semibold text-white">
+                                                Vaulted
+                                            </span>
+                                        ) : null}
+                                    </button>
+                                    <div className="flex flex-1 items-center justify-between gap-2 p-2.5">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-xs font-bold">
+                                                {img.source === "profile"
+                                                    ? userLabel(img.senderId)
+                                                    : `${userLabel(img.senderId)} → ${userLabel(img.receiverId)}`}
+                                            </p>
+                                            <p className="truncate text-[10px] text-muted">
+                                                {formatDateTime(img.createdAt)}
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                triggerMediaDownload(img.url, img.id)
+                                            }
+                                            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-line text-muted hover:border-accent hover:text-accent"
+                                            title="Download photo"
+                                        >
+                                            <Download className="size-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )
+                ) : null}
+
+                {/* ==================== VOICE PACKS TAB ==================== */}
+                {!loading && activeTab === "voice" ? (
+                    filteredVoice.length === 0 ? (
+                        <EmptyBox label="No Voice Pack recordings found." />
+                    ) : (
+                        <div className="space-y-2.5">
+                            {filteredVoice.map((vp) => (
+                                <div
+                                    key={`${vp.chatId}_${vp.id}`}
+                                    className="panel flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <Avatar
+                                            name={userLabel(vp.senderId)}
+                                            src={userAvatar(vp.senderId)}
+                                            uid={vp.senderId}
+                                            size="sm"
+                                        />
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                <p className="truncate text-sm font-bold">
+                                                    {userLabel(vp.senderId)} →{" "}
+                                                    {userLabel(vp.receiverId)}
+                                                </p>
+                                                {vp.preservedFromVault ? (
+                                                    <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-semibold text-danger">
+                                                        Deleted in chat · Restored
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                            <p className="text-xs text-muted">
+                                                {formatDateTime(vp.createdAt)} · Duration{" "}
+                                                {formatClock(vp.duration || 0)}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        {vp.audioUrl ? (
+                                            <>
+                                                <VoicePlayer
+                                                    src={vp.audioUrl}
+                                                    duration={vp.duration}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        triggerMediaDownload(
+                                                            vp.audioUrl,
+                                                            `voice-pack-${vp.id}`
+                                                        )
+                                                    }
+                                                    className="flex size-9 shrink-0 items-center justify-center rounded-full border border-line text-muted hover:border-accent hover:text-accent"
+                                                    title="Download voice pack"
+                                                >
+                                                    <Download className="size-4" />
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <span className="text-xs italic text-muted">
+                                                Audio deleted before Vault activation
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )
+                ) : null}
+
+                {/* ==================== CALLS TAB ==================== */}
+                {!loading && activeTab === "calls" ? (
+                    filteredCalls.length === 0 ? (
+                        <EmptyBox label="No voice or video calls logged yet." />
+                    ) : (
+                        <div className="panel divide-y divide-line overflow-hidden">
+                            {filteredCalls.map((call) => {
+                                const isVideo = call.type === "video";
+                                return (
+                                    <div
+                                        key={call.id}
+                                        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                                    >
+                                        <div className="flex min-w-0 items-center gap-3">
+                                            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+                                                {isVideo ? (
+                                                    <Video className="size-4" />
+                                                ) : (
+                                                    <Phone className="size-4" />
+                                                )}
+                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-bold">
+                                                    {userLabel(call.callerId)} →{" "}
+                                                    {userLabel(call.calleeId)}
+                                                </p>
+                                                <p className="text-xs text-muted">
+                                                    {isVideo ? "Video call" : "Voice call"} ·{" "}
+                                                    {formatDateTime(call.createdAt)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span
+                                            className={cn(
+                                                "rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize",
+                                                call.status === "connected" ||
+                                                    call.status === "ended"
+                                                    ? "bg-success/15 text-success"
+                                                    : call.status === "missed" ||
+                                                        call.status === "declined" ||
+                                                        call.status === "failed"
+                                                      ? "bg-danger/15 text-danger"
+                                                      : "bg-accent-soft text-accent"
+                                            )}
+                                        >
+                                            {call.status || "unknown"}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )
+                ) : null}
+            </main>
+
+            <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc("")} />
+        </div>
+    );
+}
+
+function StatCard({ icon: Icon, label, value, sub, onClick }) {
+    const Tag = onClick ? "button" : "div";
+    return (
+        <Tag
+            type={onClick ? "button" : undefined}
+            onClick={onClick}
+            className={cn(
+                "panel flex flex-col items-start p-3.5 text-left transition-colors",
+                onClick ? "hover:border-accent" : ""
+            )}
+        >
+            <span className="flex size-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                <Icon className="size-4" />
+            </span>
+            <p className="mt-2.5 text-2xl font-bold leading-none tabular-nums">{value}</p>
+            <p className="mt-1 text-xs font-semibold">{label}</p>
+            {sub ? <p className="mt-0.5 text-[11px] text-muted">{sub}</p> : null}
+        </Tag>
+    );
+}
+
+function EmptyBox({ label }) {
+    return (
+        <div className="panel py-12 text-center text-sm text-muted">
+            {label}
+        </div>
+    );
+}
+
+export default function AdminApp() {
+    const [unlocked, setUnlocked] = useState(false);
+
+    useEffect(() => {
+        document.title = "Admin Vault — Personal Chat";
+        function handlePageShow(event) {
+            if (event.persisted) setUnlocked(false);
+        }
+        window.addEventListener("pageshow", handlePageShow);
+        return () => window.removeEventListener("pageshow", handlePageShow);
+    }, []);
+
+    async function handleLock() {
+        setUnlocked(false);
+        await signOutAdmin();
+    }
+
+    return (
+        <ThemeProvider>
+            <ToastProvider>
+                {!isFirebaseConfigured ? (
+                    <SetupPage />
+                ) : !unlocked ? (
+                    <AdminLoginPage onAuthenticated={() => setUnlocked(true)} />
+                ) : (
+                    <AdminWorkspace onLock={handleLock} />
+                )}
+            </ToastProvider>
+        </ThemeProvider>
+    );
+}

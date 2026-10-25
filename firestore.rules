@@ -7,6 +7,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == 'admin@chat.local';
+    }
+
     function isSelf(uid) {
       return signedIn() && request.auth.uid == uid;
     }
@@ -22,9 +26,8 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
-    // Users: any signed-in user can read the directory. Only the owner
-    // can create/update their own profile. A mobile-number change must
-    // match the Firebase Auth email, so profile and login stay in sync.
+    // Users: any signed-in user (including Admin) can read the directory.
+    // Only the owner can create/update their own profile.
     // ---------------------------------------------------------------
     match /users/{uid} {
       allow read: if signedIn();
@@ -63,14 +66,11 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
-    // Text chats. Only the two participants can read or update a thread.
+    // Text chats. Participants and Admin can read; participants write.
     // ---------------------------------------------------------------
     match /chats/{chatId} {
-      // Individual reads must also succeed when the thread does not exist yet
-      // (find-or-create / reset-unread flows). A missing document exposes no
-      // data, so it is safe for any signed-in user.
-      allow get: if signedIn() && (resource == null || isParticipant(resource.data));
-      allow list: if isParticipant(resource.data);
+      allow get: if isAdmin() || (signedIn() && (resource == null || isParticipant(resource.data)));
+      allow list: if isAdmin() || isParticipant(resource.data);
 
       allow create: if signedIn()
         && validParticipants(request.resource.data)
@@ -93,11 +93,10 @@ service cloud.firestore {
           return get(/databases/$(database)/documents/chats/$(chatId));
         }
 
-        // The parent thread may not exist yet while the page is mounting.
-        // An empty subcollection exposes no data, so allow that read.
-        allow read: if signedIn()
-          && (parentThread() == null
-            || request.auth.uid in parentThread().data.participants);
+        allow read: if isAdmin()
+          || (signedIn()
+            && (parentThread() == null
+              || request.auth.uid in parentThread().data.participants));
 
         allow create: if signedIn()
           && request.auth.uid in parentThread().data.participants
@@ -134,12 +133,11 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
-    // Voice Pack chats use their own collection so their messages,
-    // previews and unread counts never mix with text chats.
+    // Voice Pack chats. Participants and Admin can read; participants write.
     // ---------------------------------------------------------------
     match /voiceChats/{chatId} {
-      allow get: if signedIn() && (resource == null || isParticipant(resource.data));
-      allow list: if isParticipant(resource.data);
+      allow get: if isAdmin() || (signedIn() && (resource == null || isParticipant(resource.data)));
+      allow list: if isAdmin() || isParticipant(resource.data);
 
       allow create: if signedIn()
         && validParticipants(request.resource.data)
@@ -162,9 +160,10 @@ service cloud.firestore {
           return get(/databases/$(database)/documents/voiceChats/$(chatId));
         }
 
-        allow read: if signedIn()
-          && (parentThread() == null
-            || request.auth.uid in parentThread().data.participants);
+        allow read: if isAdmin()
+          || (signedIn()
+            && (parentThread() == null
+              || request.auth.uid in parentThread().data.participants));
 
         allow create: if signedIn()
           && request.auth.uid in parentThread().data.participants
@@ -200,15 +199,13 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
-    // One-to-one voice/video calls. The call document carries the SDP
-    // offer/answer and status; ICE candidates live in subcollections.
+    // One-to-one voice/video calls.
     // ---------------------------------------------------------------
     match /calls/{callId} {
-      // The incoming-call listener filters by calleeId, so the read rule
-      // must be provable from that query for Firestore's list checks.
-      allow read: if signedIn()
-        && (resource.data.calleeId == request.auth.uid
-          || resource.data.callerId == request.auth.uid);
+      allow read: if isAdmin()
+        || (signedIn()
+          && (resource.data.calleeId == request.auth.uid
+            || resource.data.callerId == request.auth.uid));
 
       allow create: if signedIn()
         && request.resource.data.callerId == request.auth.uid
@@ -252,8 +249,8 @@ service cloud.firestore {
           return get(/databases/$(database)/documents/calls/$(callId));
         }
 
-        allow read: if signedIn()
-          && request.auth.uid in parentCall().data.participants;
+        allow read: if isAdmin()
+          || (signedIn() && request.auth.uid in parentCall().data.participants);
 
         allow create: if signedIn()
           && request.auth.uid in parentCall().data.participants
@@ -274,8 +271,8 @@ service cloud.firestore {
           return get(/databases/$(database)/documents/calls/$(callId));
         }
 
-        allow read: if signedIn()
-          && request.auth.uid in parentCall().data.participants;
+        allow read: if isAdmin()
+          || (signedIn() && request.auth.uid in parentCall().data.participants);
 
         allow create: if signedIn()
           && request.auth.uid in parentCall().data.participants
@@ -290,6 +287,23 @@ service cloud.firestore {
 
         allow update, delete: if false;
       }
+    }
+
+    // ---------------------------------------------------------------
+    // Permanent Admin Vault: write-once immutable archive of messages,
+    // images, voice packs and profile snapshots. Never editable or
+    // deletable by chat users; readable only by Admin.
+    // ---------------------------------------------------------------
+    match /adminVault/{vaultId} {
+      allow read: if isAdmin();
+
+      allow create: if signedIn()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.kind in [
+          'chat_message', 'voice_message', 'message_edit', 'profile_snapshot'
+        ];
+
+      allow update, delete: if false;
     }
 
     // Everything else is closed by default.

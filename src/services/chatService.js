@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "./firebase";
 import { AppError, toAppError } from "./errors";
+import { adminVaultService } from "./adminVaultService";
 import { limits } from "../config/app";
 
 const MESSAGES_LIMIT = 500;
@@ -224,6 +225,27 @@ export function createThreadService(collectionName) {
                     [`unread.${otherUid}`]: increment(1)
                 });
                 await batch.commit();
+                adminVaultService.recordMessage({
+                    actorUid: uid,
+                    collectionName,
+                    chatId,
+                    messageId: id,
+                    senderId: uid,
+                    receiverId: otherUid,
+                    type,
+                    text: value,
+                    imageUrl,
+                    audioUrl,
+                    duration: Number(duration) || 0,
+                    replyTo: replyTo
+                        ? {
+                              id: String(replyTo.id || ""),
+                              senderId: String(replyTo.senderId || ""),
+                              type: String(replyTo.type || "text"),
+                              text: String(replyTo.text || "").slice(0, 160)
+                          }
+                        : null
+                });
                 return id;
             } catch (error) {
                 throw toAppError(error, "Could not send the message.");
@@ -244,6 +266,13 @@ export function createThreadService(collectionName) {
                 await updateDoc(messageRef(chatId, messageId), {
                     text: value,
                     editedAt: serverTimestamp()
+                });
+                adminVaultService.recordMessageEdit({
+                    actorUid: uid,
+                    collectionName,
+                    chatId,
+                    messageId,
+                    text: value
                 });
                 const snap = await getDoc(chatRef(uid, otherUid));
                 if (snap.exists() && snap.data().lastMessage?.id === messageId) {

@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "./firebase";
 import { AppError, toAppError } from "./errors";
+import { adminVaultService } from "./adminVaultService";
 import { limits } from "../config/app";
 import { isValidMobile, normalizeMobile } from "../utils/validation";
 
@@ -39,6 +40,14 @@ export const userService = {
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
                 lastSeen: serverTimestamp()
+            });
+            adminVaultService.recordProfile({
+                actorUid: uid,
+                uid,
+                displayName,
+                mobileNumber: mobile,
+                photoURL,
+                bio
             });
             return { uid, displayName, mobileNumber: mobile, photoURL, bio };
         } catch (error) {
@@ -100,6 +109,7 @@ export const userService = {
         if (Object.keys(clean).length === 0) return;
         try {
             await updateDoc(doc(db, USERS, uid), { ...clean, updatedAt: serverTimestamp() });
+            adminVaultService.recordProfile({ actorUid: uid, uid, ...clean });
         } catch (error) {
             throw toAppError(error, "Could not save profile.");
         }
@@ -116,6 +126,7 @@ export const userService = {
                 mobileNumber: mobile,
                 updatedAt: serverTimestamp()
             });
+            adminVaultService.recordProfile({ actorUid: uid, uid, mobileNumber: mobile });
         } catch (error) {
             throw toAppError(error, "Could not update the mobile number.");
         }

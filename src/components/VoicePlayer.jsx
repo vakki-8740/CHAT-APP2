@@ -6,9 +6,7 @@ import { cn } from "../utils/cn";
 
 export function VoicePlayer({ src, duration = 0, tone = "default" }) {
     const audioRef = useRef(null);
-    const [resolvedSrc, setResolvedSrc] = useState(() =>
-        typeof src === "string" && !src.startsWith("data:") ? src : ""
-    );
+    const [resolvedSrc, setResolvedSrc] = useState("");
     const [playing, setPlaying] = useState(false);
     const [current, setCurrent] = useState(0);
     const [total, setTotal] = useState(Number(duration) || 0);
@@ -46,10 +44,12 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
 
         const onTime = () => setCurrent(audio.currentTime || 0);
         const onMeta = () => {
+            setFailed(false);
             if (Number.isFinite(audio.duration) && audio.duration > 0) {
                 setTotal(audio.duration);
             }
         };
+        const onCanPlay = () => setFailed(false);
         const onEnd = () => {
             setPlaying(false);
             setCurrent(0);
@@ -62,11 +62,13 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
 
         audio.addEventListener("timeupdate", onTime);
         audio.addEventListener("loadedmetadata", onMeta);
+        audio.addEventListener("canplay", onCanPlay);
         audio.addEventListener("ended", onEnd);
         audio.addEventListener("error", onError);
         return () => {
             audio.removeEventListener("timeupdate", onTime);
             audio.removeEventListener("loadedmetadata", onMeta);
+            audio.removeEventListener("canplay", onCanPlay);
             audio.removeEventListener("ended", onEnd);
             audio.removeEventListener("error", onError);
         };
@@ -81,6 +83,7 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
             return;
         }
         try {
+            if (failed) audio.load();
             await audio.play();
             setPlaying(true);
             setFailed(false);
@@ -91,7 +94,7 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
 
     function seek(event) {
         const audio = audioRef.current;
-        if (!audio || !total) return;
+        if (!audio || !total || failed) return;
         const rect = event.currentTarget.getBoundingClientRect();
         const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
         audio.currentTime = ratio * total;
@@ -122,40 +125,49 @@ export function VoicePlayer({ src, duration = 0, tone = "default" }) {
                 )}
             </button>
 
-            <button
-                type="button"
-                onClick={seek}
-                className="flex flex-1 flex-col gap-1 py-1"
-                aria-label="Seek voice message"
-            >
+            {failed ? (
                 <span
                     className={cn(
-                        "block h-1.5 w-full overflow-hidden rounded-full",
-                        onAccent ? "bg-white/25" : "bg-line"
+                        "flex flex-1 items-center gap-1.5 text-xs italic",
+                        onAccent ? "text-white/80" : "text-muted"
                     )}
                 >
+                    <AlertCircle className="size-3.5 shrink-0" /> Audio unavailable
+                </span>
+            ) : (
+                <>
+                    <button
+                        type="button"
+                        onClick={seek}
+                        className="flex flex-1 flex-col gap-1 py-1"
+                        aria-label="Seek voice message"
+                    >
+                        <span
+                            className={cn(
+                                "block h-1.5 w-full overflow-hidden rounded-full",
+                                onAccent ? "bg-white/25" : "bg-line"
+                            )}
+                        >
+                            <span
+                                className={cn(
+                                    "block h-full rounded-full",
+                                    onAccent ? "bg-white" : "bg-accent"
+                                )}
+                                style={{ width: `${progress}%` }}
+                            />
+                        </span>
+                    </button>
+
                     <span
                         className={cn(
-                            "block h-full rounded-full",
-                            onAccent ? "bg-white" : "bg-accent"
+                            "shrink-0 text-[10px] tabular-nums",
+                            onAccent ? "text-white/75" : "text-muted"
                         )}
-                        style={{ width: `${progress}%` }}
-                    />
-                </span>
-            </button>
-
-            <span
-                className={cn(
-                    "shrink-0 text-[10px] tabular-nums",
-                    onAccent ? "text-white/75" : "text-muted"
-                )}
-            >
-                {failed ? (
-                    <AlertCircle className="size-3.5" aria-label="Audio failed to load" />
-                ) : (
-                    `${formatClock(current)} / ${formatClock(total)}`
-                )}
-            </span>
+                    >
+                        {`${formatClock(current)} / ${formatClock(total)}`}
+                    </span>
+                </>
+            )}
         </div>
     );
 }

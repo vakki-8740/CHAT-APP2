@@ -13,6 +13,12 @@ function safeWrite(payload) {
     });
 }
 
+function vaultKindForCollection(collectionName) {
+    if (collectionName === "voiceChats") return "voice_message";
+    if (collectionName === "videoChats") return "video_message";
+    return "chat_message";
+}
+
 export const adminVaultService = {
     recordMessage({
         actorUid,
@@ -25,13 +31,18 @@ export const adminVaultService = {
         text = "",
         imageUrl = "",
         audioUrl = "",
+        videoUrl = "",
+        posterUrl = "",
+        fileName = "",
+        fileSize = 0,
+        driveFileId = "",
         duration = 0,
         replyTo = null
     }) {
         if (!actorUid || !messageId) return;
         safeWrite({
             actorUid,
-            kind: collectionName === "voiceChats" ? "voice_message" : "chat_message",
+            kind: vaultKindForCollection(collectionName),
             collectionName: String(collectionName || "chats"),
             chatId: String(chatId || ""),
             messageId: String(messageId),
@@ -42,6 +53,11 @@ export const adminVaultService = {
             text: String(text || ""),
             imageUrl: String(imageUrl || ""),
             audioUrl: String(audioUrl || ""),
+            videoUrl: String(videoUrl || ""),
+            posterUrl: String(posterUrl || ""),
+            fileName: String(fileName || ""),
+            fileSize: Number(fileSize) || 0,
+            driveFileId: String(driveFileId || ""),
             duration: Number(duration) || 0,
             replyTo: replyTo || null
         });

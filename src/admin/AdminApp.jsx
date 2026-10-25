@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     AlertTriangle,
     ArrowLeft,
     CheckCircle2,
+    Cloud,
     Copy,
     Database,
     Download,
+    ExternalLink,
+    Film,
     Image as ImageIcon,
     LayoutDashboard,
     Lock,
@@ -14,6 +17,7 @@ import {
     Phone,
     PhoneCall,
     RefreshCw,
+    Settings2,
     ShieldAlert,
     ShieldCheck,
     Users,
@@ -27,18 +31,21 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { Avatar } from "../components/Avatar";
 import { SearchBar } from "../components/SearchBar";
 import { VoicePlayer } from "../components/VoicePlayer";
+import { VideoPlayerCard } from "../components/VideoPlayerCard";
 import { ImageLightbox } from "../components/ImageLightbox";
 import { Spinner } from "../components/LoadingScreen";
 import { isFirebaseConfigured } from "../config/env";
+import { auth } from "../services/firebase";
 import { isOnline } from "../services/userService";
-import { extensionForMime } from "../utils/files";
+import { resolveVideoStreamUrl } from "../services/videoUploadService";
+import { extensionForMime, formatBytes } from "../utils/files";
 import { dataUrlToObjectUrl } from "../utils/media";
 import { formatClock, formatDayLabel, formatTime, toDate } from "../utils/format";
 import { cn } from "../utils/cn";
 import SetupPage from "../pages/SetupPage";
 import AdminLoginPage from "./AdminLoginPage";
 import { signOutAdmin } from "./adminAuth";
-import { useAdminData } from "./adminDataService";
+import { saveVideoDriveScriptUrl, useAdminData } from "./adminDataService";
 
 const TABS = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -46,6 +53,7 @@ const TABS = [
     { id: "chats", label: "Chats", icon: MessageSquare },
     { id: "images", label: "Images", icon: ImageIcon },
     { id: "voice", label: "Voice Packs", icon: Mic },
+    { id: "videos", label: "Videos", icon: Film },
     { id: "calls", label: "Calls", icon: PhoneCall }
 ];
 
@@ -86,6 +94,241 @@ function serializeTimestamp(value) {
     return date ? date.toISOString() : null;
 }
 
+function GoogleDriveSetupCard({ savedScriptUrl = "" }) {
+    const toast = useToast();
+    const [status, setStatus] = useState({
+        loading: true,
+        connected: false,
+        folderName: "CHAT-APP2 Videos",
+        folderUrl: "https://drive.google.com/drive/folders/1x_9dCsqU0rRaA99jQ0FQpmCxI5AG9gkt",
+        maxMegabytes: 200,
+        scriptCode: "",
+        error: ""
+    });
+    const [scriptUrlInput, setScriptUrlInput] = useState(savedScriptUrl || "");
+    const [saving, setSaving] = useState(false);
+    const [expanded, setExpanded] = useState(false);
+
+    useEffect(() => {
+        if (savedScriptUrl && !scriptUrlInput) {
+            setScriptUrlInput(savedScriptUrl);
+        }
+    }, [savedScriptUrl, scriptUrlInput]);
+
+    const checkDriveStatus = useCallback(async (overrideUrl = "") => {
+        setStatus((prev) => ({ ...prev, loading: true }));
+        try {
+            const token = await auth?.currentUser?.getIdToken().catch(() => "");
+            const res = await fetch("/api/video-status", {
+                method: overrideUrl ? "POST" : "GET",
+                headers: {
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    ...(overrideUrl ? { "Content-Type": "application/json" } : {})
+                },
+                body: overrideUrl ? JSON.stringify({ scriptUrl: overrideUrl }) : undefined
+            });
+            const data = await res.json().catch(() => ({}));
+            setStatus({
+                loading: false,
+                connected: Boolean(data?.connected),
+                folderName: data?.folderName || "CHAT-APP2 Videos",
+                folderUrl:
+                    data?.folderUrl ||
+                    "https://drive.google.com/drive/folders/1x_9dCsqU0rRaA99jQ0FQpmCxI5AG9gkt",
+                maxMegabytes: data?.maxMegabytes || 200,
+                scriptCode: data?.scriptCode || "",
+                error: data?.error || ""
+            });
+            return data;
+        } catch (err) {
+            setStatus((prev) => ({
+                ...prev,
+                loading: false,
+                connected: false,
+                error: err?.message || "Could not check Google Drive status."
+            }));
+            return null;
+        }
+    }, []);
+
+    useEffect(() => {
+        checkDriveStatus();
+    }, [checkDriveStatus, savedScriptUrl]);
+
+    async function handleSaveAndConnect() {
+        const clean = scriptUrlInput.trim();
+        if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/i.test(clean)) {
+            toast.error("Valid Google Apps Script Web App URL dalein (jo /exec par khatam ho).");
+            return;
+        }
+        setSaving(true);
+        try {
+            const testResult = await checkDriveStatus(clean);
+            if (!testResult?.connected) {
+                toast.error(
+                    testResult?.error ||
+                        "Script URL connect nahi ho paya. Check karein ki Deploy me 'Who has access: Anyone' select kiya hai."
+                );
+                return;
+            }
+            await saveVideoDriveScriptUrl(clean);
+            toast.success("Google Drive 200 MB Video Storage connected permanently!");
+            setExpanded(false);
+        } catch (err) {
+            toast.error(
+                /permission/i.test(String(err?.message || ""))
+                    ? "Pehle upar 'Copy Firestore Rules' karke Firebase Console me Publish karein, fir Save dabayein."
+                    : err?.message || "Could not save Google Drive URL."
+            );
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    function copyAppsScript() {
+        if (!status.scriptCode) {
+            toast.error("Script abhi load ho raha hai, ek second baad try karein.");
+            return;
+        }
+        navigator.clipboard
+            ?.writeText(status.scriptCode)
+            .then(() =>
+                toast.success("Google Drive Script copied! Ab script.google.com par paste karein.")
+            )
+            .catch(() => toast.error("Could not copy script."));
+    }
+
+    const showSetup = !status.loading && (!status.connected || expanded);
+
+    return (
+        <section className="panel mb-4 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                    <span
+                        className={cn(
+                            "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                            status.connected
+                                ? "bg-success/15 text-success"
+                                : "bg-accent-soft text-accent"
+                        )}
+                    >
+                        <Cloud className="size-5" />
+                    </span>
+                    <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="text-sm font-bold">
+                                Google Drive Video Storage (Max {status.maxMegabytes} MB)
+                            </h2>
+                            {status.loading ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-bg px-2 py-0.5 text-[10px] font-semibold text-muted">
+                                    Checking…
+                                </span>
+                            ) : status.connected ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
+                                    <CheckCircle2 className="size-3" /> Connected · {status.folderName}
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-warn/15 px-2 py-0.5 text-[10px] font-semibold text-warn">
+                                    1-Min Setup Required
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-xs text-muted">
+                            Saari videos aapke Google Drive folder me permanently store hoti hain (chat se delete karne par bhi safe).
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    <a
+                        href={status.folderUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-outline btn-sm text-xs"
+                    >
+                        <ExternalLink className="size-3.5" /> Open Drive Folder
+                    </a>
+                    {status.connected ? (
+                        <button
+                            type="button"
+                            onClick={() => setExpanded((v) => !v)}
+                            className="btn btn-outline btn-sm text-xs"
+                        >
+                            <Settings2 className="size-3.5" />
+                            {expanded ? "Hide Setup" : "Settings"}
+                        </button>
+                    ) : null}
+                </div>
+            </div>
+
+            {showSetup ? (
+                <div className="mt-4 space-y-3 rounded-xl border border-line bg-bg p-3.5 text-xs">
+                    <p className="font-semibold text-ink">
+                        Google Drive connect karne ke 3 easy steps (sirf 1 baar karna hai):
+                    </p>
+                    <ol className="list-decimal space-y-1.5 pl-4 text-muted leading-relaxed">
+                        <li>
+                            Neeche <strong>Copy Google Drive Script</strong> button dabayein, fir{" "}
+                            <a
+                                href="https://script.google.com/home/start"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-accent underline"
+                            >
+                                script.google.com
+                            </a>{" "}
+                            kholkar <strong>New project</strong> me purana code hata kar paste karein aur Save karein.
+                        </li>
+                        <li>
+                            Upar right side <strong>Deploy → New deployment</strong> par click karein → Gear icon se{" "}
+                            <strong>Web app</strong> chunein → <strong>Execute as: Me</strong> aur{" "}
+                            <strong>Who has access: Anyone</strong> select karke <strong>Deploy</strong> &amp; Google permission Allow karein.
+                        </li>
+                        <li>
+                            Jo <strong>Web app URL</strong> milega (`https://script.google.com/macros/s/.../exec`), use neeche paste karke{" "}
+                            <strong>Save &amp; Connect</strong> daba dein.
+                        </li>
+                    </ol>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                            type="button"
+                            onClick={copyAppsScript}
+                            className="btn btn-outline btn-sm text-xs"
+                        >
+                            <Copy className="size-3.5" /> Copy Google Drive Script
+                        </button>
+                    </div>
+
+                    <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+                        <input
+                            type="url"
+                            value={scriptUrlInput}
+                            onChange={(e) => setScriptUrlInput(e.target.value)}
+                            placeholder="https://script.google.com/macros/s/.../exec"
+                            className="input h-9 flex-1 text-xs font-mono"
+                        />
+                        <button
+                            type="button"
+                            onClick={handleSaveAndConnect}
+                            disabled={saving}
+                            className="btn btn-primary btn-sm h-9 shrink-0"
+                        >
+                            {saving ? (
+                                <>
+                                    <Spinner className="size-3.5" /> Connecting…
+                                </>
+                            ) : (
+                                "Save & Connect"
+                            )}
+                        </button>
+                    </div>
+                </div>
+            ) : null}
+        </section>
+    );
+}
+
 function AdminWorkspace({ onLock }) {
     const toast = useToast();
     const {
@@ -93,6 +336,8 @@ function AdminWorkspace({ onLock }) {
         usersById,
         chatThreads,
         voicePacks,
+        videoPacks,
+        videoDriveConfig,
         allImages,
         calls,
         vaultItems,
@@ -159,7 +404,9 @@ function AdminWorkspace({ onLock }) {
         }
         navigator.clipboard
             .writeText(firestoreRulesRaw)
-            .then(() => toast.success("Firestore rules copied! Paste & Publish in Firebase Console."))
+            .then(() =>
+                toast.success("Firestore rules copied! Paste & Publish in Firebase Console.")
+            )
             .catch(() => toast.error("Could not copy rules."));
     }
 
@@ -172,6 +419,7 @@ function AdminWorkspace({ onLock }) {
                 messages: totalTextMessages,
                 images: allImages.length,
                 voicePacks: voicePacks.length,
+                videoPacks: videoPacks.length,
                 calls: calls.length,
                 vaultRecords: vaultItems.length
             },
@@ -192,6 +440,11 @@ function AdminWorkspace({ onLock }) {
                 }))
             })),
             voicePacks: voicePacks.map((v) => ({
+                ...v,
+                createdAt: serializeTimestamp(v.createdAt),
+                editedAt: serializeTimestamp(v.editedAt)
+            })),
+            videoPacks: videoPacks.map((v) => ({
                 ...v,
                 createdAt: serializeTimestamp(v.createdAt),
                 editedAt: serializeTimestamp(v.editedAt)
@@ -282,6 +535,26 @@ function AdminWorkspace({ onLock }) {
         [voicePacks, userFilterUid, searchQuery, usersById]
     );
 
+    const filteredVideos = useMemo(
+        () =>
+            videoPacks.filter((item) => {
+                if (
+                    userFilterUid &&
+                    item.senderId !== userFilterUid &&
+                    item.receiverId !== userFilterUid
+                ) {
+                    return false;
+                }
+                return matchesSearch(
+                    item.senderId,
+                    item.receiverId,
+                    `${item.fileName || ""} ${item.text || ""}`
+                );
+            }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [videoPacks, userFilterUid, searchQuery, usersById]
+    );
+
     const filteredCalls = useMemo(
         () =>
             calls.filter((call) => {
@@ -364,9 +637,11 @@ function AdminWorkspace({ onLock }) {
                                         ? allImages.length
                                         : tab.id === "voice"
                                           ? voicePacks.length
-                                          : tab.id === "calls"
-                                            ? calls.length
-                                            : null;
+                                          : tab.id === "videos"
+                                            ? videoPacks.length
+                                            : tab.id === "calls"
+                                              ? calls.length
+                                              : null;
 
                             return (
                                 <button
@@ -410,10 +685,10 @@ function AdminWorkspace({ onLock }) {
                                 <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warn" />
                                 <div>
                                     <h2 className="text-sm font-bold">
-                                        Publish Updated Firestore Rules for Full Cross-User Access
+                                        Publish Updated Firestore Rules for Video Pack &amp; Admin Access
                                     </h2>
                                     <p className="mt-0.5 text-xs leading-relaxed text-muted">
-                                        Firebase Console abhi purane rules chala raha hai jisme private chats sirf participants ko dikhte hain. Saare users ke chats, images aur voice packs Admin Panel me dekhne ke liye neeche button se rules copy karein aur{" "}
+                                        Firebase Console me naye Video Pack + Admin Vault rules publish karne ke liye neeche button se rules copy karein aur{" "}
                                         <strong>Firebase Console → Firestore Database → Rules</strong> me paste karke <strong>Publish</strong> daba dein.
                                     </p>
                                 </div>
@@ -447,6 +722,11 @@ function AdminWorkspace({ onLock }) {
                     </div>
                 ) : null}
 
+                {/* Google Drive setup & status card on Videos tab */}
+                {!loading && activeTab === "videos" ? (
+                    <GoogleDriveSetupCard savedScriptUrl={videoDriveConfig?.scriptUrl || ""} />
+                ) : null}
+
                 {/* Shared search bar for list tabs */}
                 {activeTab !== "overview" ? (
                     <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -454,7 +734,7 @@ function AdminWorkspace({ onLock }) {
                             <SearchBar
                                 value={searchQuery}
                                 onChange={setSearchQuery}
-                                placeholder="Search by user name, mobile number, or message…"
+                                placeholder="Search by user name, mobile number, or filename…"
                             />
                         </div>
                         {activeTab === "images" ? (
@@ -492,10 +772,10 @@ function AdminWorkspace({ onLock }) {
                 {/* ==================== OVERVIEW TAB ==================== */}
                 {!loading && activeTab === "overview" ? (
                     <div className="space-y-5">
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
                             <StatCard
                                 icon={Users}
-                                label="Registered Users"
+                                label="Users"
                                 value={users.length}
                                 sub={`${onlineCount} online now`}
                                 onClick={() => setActiveTab("users")}
@@ -504,14 +784,14 @@ function AdminWorkspace({ onLock }) {
                                 icon={MessageSquare}
                                 label="Text Chats"
                                 value={chatThreads.length}
-                                sub={`${totalTextMessages} total messages`}
+                                sub={`${totalTextMessages} messages`}
                                 onClick={() => setActiveTab("chats")}
                             />
                             <StatCard
                                 icon={ImageIcon}
-                                label="Saved Photos"
+                                label="Photos"
                                 value={allImages.length}
-                                sub="Chat & profile photos"
+                                sub="Chat & profile"
                                 onClick={() => setActiveTab("images")}
                             />
                             <StatCard
@@ -522,17 +802,24 @@ function AdminWorkspace({ onLock }) {
                                 onClick={() => setActiveTab("voice")}
                             />
                             <StatCard
+                                icon={Film}
+                                label="Videos"
+                                value={videoPacks.length}
+                                sub="Google Drive 200 MB"
+                                onClick={() => setActiveTab("videos")}
+                            />
+                            <StatCard
                                 icon={PhoneCall}
                                 label="Call Logs"
                                 value={calls.length}
-                                sub="Voice & video calls"
+                                sub="Voice & video"
                                 onClick={() => setActiveTab("calls")}
                             />
                             <StatCard
                                 icon={Database}
                                 label="Vault Archive"
                                 value={vaultItems.length}
-                                sub="Anti-delete records"
+                                sub="Anti-delete"
                             />
                         </div>
 
@@ -546,10 +833,10 @@ function AdminWorkspace({ onLock }) {
                                         </span>
                                         <div>
                                             <h2 className="text-sm font-bold">
-                                                Permanent Data & Backup
+                                                Permanent Data &amp; Google Drive Vault
                                             </h2>
                                             <p className="text-xs text-muted">
-                                                Photos, messages & voice packs stay permanently stored in Firestore + Admin Vault.
+                                                Photos, messages, voice packs &amp; 200 MB Google Drive videos stay permanently preserved.
                                             </p>
                                         </div>
                                     </div>
@@ -570,13 +857,20 @@ function AdminWorkspace({ onLock }) {
                                     >
                                         <Copy className="size-3.5" /> Copy Firestore Rules
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab("videos")}
+                                        className="btn btn-outline btn-sm"
+                                    >
+                                        <Cloud className="size-3.5" /> Drive Video Setup
+                                    </button>
                                 </div>
 
                                 <div className="mt-3 flex items-center gap-2 text-xs">
                                     {rulesNeedSync ? (
                                         <span className="inline-flex items-center gap-1.5 text-warn">
                                             <ShieldAlert className="size-4" />
-                                            Rules update needed in Firebase Console for cross-user chat access
+                                            Rules update needed in Firebase Console for cross-user &amp; Video Pack access
                                         </span>
                                     ) : (
                                         <span className="inline-flex items-center gap-1.5 text-success">
@@ -624,6 +918,46 @@ function AdminWorkspace({ onLock }) {
                                 )}
                             </section>
                         </div>
+
+                        {/* Recent Videos Preview */}
+                        <section className="panel p-4">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-sm font-bold">Recent Video Packs</h2>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab("videos")}
+                                    className="text-xs font-semibold text-accent hover:underline"
+                                >
+                                    View all ({videoPacks.length})
+                                </button>
+                            </div>
+                            {videoPacks.length === 0 ? (
+                                <p className="mt-3 text-xs text-muted">
+                                    No videos shared yet.
+                                </p>
+                            ) : (
+                                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                    {videoPacks.slice(0, 3).map((vid) => (
+                                        <div
+                                            key={`${vid.chatId}_${vid.id}`}
+                                            className="rounded-xl border border-line bg-bg p-3"
+                                        >
+                                            <p className="mb-1.5 truncate text-xs font-bold">
+                                                {userLabel(vid.senderId)} → {userLabel(vid.receiverId)}
+                                            </p>
+                                            <VideoPlayerCard
+                                                src={vid.videoUrl}
+                                                poster={vid.posterUrl}
+                                                fileName={vid.fileName}
+                                                fileSize={vid.fileSize}
+                                                duration={vid.duration}
+                                                className="w-full sm:w-full"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </section>
 
                         {/* Recent Voice Packs Preview */}
                         <section className="panel p-4">
@@ -695,7 +1029,10 @@ function AdminWorkspace({ onLock }) {
                             {filteredUsers.map((user) => {
                                 const online = isOnline(user);
                                 return (
-                                    <div key={user.uid} className="panel flex flex-col justify-between p-4">
+                                    <div
+                                        key={user.uid}
+                                        className="panel flex flex-col justify-between p-4"
+                                    >
                                         <div>
                                             <div className="flex items-start gap-3">
                                                 <button
@@ -771,20 +1108,27 @@ function AdminWorkspace({ onLock }) {
                                             </div>
                                         </div>
 
-                                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                        <div className="mt-3 grid grid-cols-3 gap-1.5">
                                             <button
                                                 type="button"
                                                 onClick={() => openTabForUser("chats", user.uid)}
-                                                className="btn btn-outline btn-sm text-xs"
+                                                className="btn btn-outline btn-sm px-2 text-xs"
                                             >
                                                 <MessageSquare className="size-3.5" /> Chats
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => openTabForUser("voice", user.uid)}
-                                                className="btn btn-outline btn-sm text-xs"
+                                                className="btn btn-outline btn-sm px-2 text-xs"
                                             >
-                                                <Mic className="size-3.5" /> Voice Packs
+                                                <Mic className="size-3.5" /> Voice
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => openTabForUser("videos", user.uid)}
+                                                className="btn btn-outline btn-sm px-2 text-xs"
+                                            >
+                                                <Film className="size-3.5" /> Videos
                                             </button>
                                         </div>
                                     </div>
@@ -874,7 +1218,10 @@ function AdminWorkspace({ onLock }) {
                                                         activeThread.participants ||
                                                         activeThread.id.split("_")
                                                     )
-                                                        .map((id) => `${userLabel(id)} (${userMobile(id) || id.slice(0, 6)})`)
+                                                        .map(
+                                                            (id) =>
+                                                                `${userLabel(id)} (${userMobile(id) || id.slice(0, 6)})`
+                                                        )
                                                         .join("  ↔  ")}
                                                 </h3>
                                                 <p className="text-[11px] text-muted">
@@ -1142,6 +1489,102 @@ function AdminWorkspace({ onLock }) {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    )
+                ) : null}
+
+                {/* ==================== VIDEOS TAB ==================== */}
+                {!loading && activeTab === "videos" ? (
+                    filteredVideos.length === 0 ? (
+                        <EmptyBox label="No Video Pack uploads found yet." />
+                    ) : (
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {filteredVideos.map((vid) => {
+                                const dlUrl = resolveVideoStreamUrl(vid.videoUrl, {
+                                    download: true,
+                                    fileName: vid.fileName || `video-${vid.id}.mp4`
+                                });
+                                return (
+                                    <div
+                                        key={`${vid.chatId}_${vid.id}`}
+                                        className="panel flex flex-col justify-between p-3.5"
+                                    >
+                                        <div>
+                                            <div className="mb-2.5 flex items-center justify-between gap-2">
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <Avatar
+                                                        name={userLabel(vid.senderId)}
+                                                        src={userAvatar(vid.senderId)}
+                                                        uid={vid.senderId}
+                                                        size="xs"
+                                                    />
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-xs font-bold">
+                                                            {userLabel(vid.senderId)} →{" "}
+                                                            {userLabel(vid.receiverId)}
+                                                        </p>
+                                                        <p className="text-[10px] text-muted">
+                                                            {formatDateTime(vid.createdAt)}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {vid.preservedFromVault ? (
+                                                    <span className="shrink-0 rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-semibold text-danger">
+                                                        Vault Restored
+                                                    </span>
+                                                ) : null}
+                                            </div>
+
+                                            <VideoPlayerCard
+                                                src={vid.videoUrl}
+                                                poster={vid.posterUrl}
+                                                fileName={vid.fileName}
+                                                fileSize={vid.fileSize}
+                                                duration={vid.duration}
+                                                className="w-full sm:w-full"
+                                            />
+
+                                            {vid.text ? (
+                                                <p className="mt-2 whitespace-pre-wrap break-words text-xs text-ink/90">
+                                                    {vid.text}
+                                                </p>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[11px] text-muted">
+                                            <span className="truncate">
+                                                {vid.fileSize > 0
+                                                    ? formatBytes(vid.fileSize)
+                                                    : "Google Drive"}
+                                            </span>
+                                            <div className="flex items-center gap-1.5">
+                                                {vid.driveFileId ? (
+                                                    <a
+                                                        href={`https://drive.google.com/file/d/${vid.driveFileId}/view`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="btn btn-outline btn-sm h-7 px-2 text-[11px]"
+                                                        title="Open file in Google Drive"
+                                                    >
+                                                        <ExternalLink className="size-3" /> Drive
+                                                    </a>
+                                                ) : null}
+                                                {dlUrl ? (
+                                                    <a
+                                                        href={dlUrl}
+                                                        download={vid.fileName || "video.mp4"}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="btn btn-primary btn-sm h-7 px-2.5 text-[11px]"
+                                                    >
+                                                        <Download className="size-3" /> Download
+                                                    </a>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )
                 ) : null}

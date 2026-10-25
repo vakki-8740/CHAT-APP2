@@ -15,6 +15,8 @@ import HomePage from "./pages/HomePage";
 import ChatPage from "./pages/ChatPage";
 import VoicePackPage from "./pages/VoicePackPage";
 import VoiceChatPage from "./pages/VoiceChatPage";
+import VideoPackPage from "./pages/VideoPackPage";
+import VideoChatPage from "./pages/VideoChatPage";
 import ProfilePage from "./pages/ProfilePage";
 
 export default function App() {
@@ -46,19 +48,31 @@ export default function App() {
                                         <Route element={<TabLayout />}>
                                             <Route path="/" element={<HomePage />} />
                                             {isStorageConfigured ? (
-                                                <Route
-                                                    path="/voice"
-                                                    element={<VoicePackPage />}
-                                                />
+                                                <>
+                                                    <Route
+                                                        path="/voice"
+                                                        element={<VoicePackPage />}
+                                                    />
+                                                    <Route
+                                                        path="/video"
+                                                        element={<VideoPackPage />}
+                                                    />
+                                                </>
                                             ) : null}
                                             <Route path="/profile" element={<ProfilePage />} />
                                         </Route>
                                         <Route path="/chat/:uid" element={<ChatPage />} />
                                         {isStorageConfigured ? (
-                                            <Route
-                                                path="/voice/:uid"
-                                                element={<VoiceChatPage />}
-                                            />
+                                            <>
+                                                <Route
+                                                    path="/voice/:uid"
+                                                    element={<VoiceChatPage />}
+                                                />
+                                                <Route
+                                                    path="/video/:uid"
+                                                    element={<VideoChatPage />}
+                                                />
+                                            </>
                                         ) : null}
                                     </Route>
                                     <Route path="*" element={<Navigate to="/" replace />} />

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { VoicePlayer } from "./VoicePlayer";
+import { VideoPlayerCard } from "./VideoPlayerCard";
 import { formatTime } from "../utils/format";
 import { mergeReactions } from "../utils/emoji";
 import { cn } from "../utils/cn";
@@ -19,6 +20,9 @@ function replyPreview(replyTo) {
     if (!replyTo) return "";
     if (replyTo.type === "image") return "Photo";
     if (replyTo.type === "voice") return "Voice message";
+    if (replyTo.type === "video") {
+        return replyTo.text ? `Video · ${replyTo.text}` : "Video";
+    }
     return replyTo.text || "Message";
 }
 
@@ -57,7 +61,7 @@ export function ChatBubble({
                 />
             ) : null}
 
-            <div className={cn("flex max-w-[80%] flex-col", mine ? "items-end" : "items-start")}>
+            <div className={cn("flex max-w-[82%] flex-col", mine ? "items-end" : "items-start")}>
                 <div
                     className={cn(
                         "relative rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm",
@@ -119,6 +123,24 @@ export function ChatBubble({
                             duration={message.duration}
                             tone={mine ? "onAccent" : "default"}
                         />
+                    ) : message.type === "video" ? (
+                        <div>
+                            <VideoPlayerCard
+                                src={message.videoUrl}
+                                poster={message.posterUrl}
+                                fileName={message.fileName}
+                                fileSize={message.fileSize}
+                                duration={message.duration}
+                                uploading={message.status === "uploading"}
+                                uploadProgress={message.uploadProgress}
+                                tone={mine ? "onAccent" : "default"}
+                            />
+                            {message.text ? (
+                                <p className="mt-1.5 whitespace-pre-wrap break-words text-sm">
+                                    {message.text}
+                                </p>
+                            ) : null}
+                        </div>
                     ) : (
                         <p className="whitespace-pre-wrap break-words">{message.text}</p>
                     )}

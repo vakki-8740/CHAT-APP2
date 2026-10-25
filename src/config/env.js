@@ -46,6 +46,8 @@ export const emulator = {
     storagePort: 9199
 };
 
+export const isAdminApp = read("VITE_APP_MODE").toLowerCase() === "admin";
+
 export const isStorageConfigured =
     (env.storage.provider === "firestore" && isFirebaseConfigured) ||
     (env.storage.provider === "http" && Boolean(env.storage.uploadEndpoint)) ||

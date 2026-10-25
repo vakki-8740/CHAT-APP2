@@ -32,9 +32,9 @@ export function extensionForMime(mime) {
 export function recorderMimeType() {
     if (typeof MediaRecorder === "undefined") return "";
     const candidates = [
+        "audio/mp4",
         "audio/webm;codecs=opus",
         "audio/webm",
-        "audio/mp4",
         "audio/ogg;codecs=opus"
     ];
     return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";

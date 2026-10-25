@@ -1,17 +1,29 @@
-import { StrictMode } from "react";
+import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { LoadingScreen } from "./components/LoadingScreen";
+import { isAdminApp } from "./config/env";
 import { installSoundUnlock, preloadSounds } from "./utils/sounds";
 import "./index.css";
 
-preloadSounds();
-installSoundUnlock();
+const AdminApp = lazy(() => import("./admin/AdminApp"));
+
+if (!isAdminApp) {
+    preloadSounds();
+    installSoundUnlock();
+}
 
 createRoot(document.getElementById("root")).render(
     <StrictMode>
         <ErrorBoundary>
-            <App />
+            {isAdminApp ? (
+                <Suspense fallback={<LoadingScreen label="Loading Admin Vault…" />}>
+                    <AdminApp />
+                </Suspense>
+            ) : (
+                <App />
+            )}
         </ErrorBoundary>
     </StrictMode>
 );

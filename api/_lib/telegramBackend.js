@@ -1,6 +1,7 @@
 import { getSigningSecret, readEnv } from "./videoBackend.js";
 
 export const UNLOCK_TELEGRAM_TEXT = "User Online aaya hai 😁✳️✅";
+export const CHAT_TELEGRAM_TEXT = "message received 💬";
 export const APP_LOCK_PIN = "272026";
 
 const DEFAULT_FIREBASE_PROJECT_ID = "chat-app2-5cd36";

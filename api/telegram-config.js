@@ -5,6 +5,7 @@ import {
     verifyFirebaseUser
 } from "./_lib/videoBackend.js";
 import {
+    CHAT_TELEGRAM_TEXT,
     UNLOCK_TELEGRAM_TEXT,
     normalizeBotToken,
     normalizeChatId,
@@ -46,7 +47,8 @@ export default async function handler(request) {
             chatId: current.chatId,
             botUsername,
             updatedAt: current.updatedAt,
-            unlockMessage: UNLOCK_TELEGRAM_TEXT
+            unlockMessage: UNLOCK_TELEGRAM_TEXT,
+            chatMessage: CHAT_TELEGRAM_TEXT
         });
     }
 
@@ -58,6 +60,9 @@ export default async function handler(request) {
     }
 
     const action = String(body?.action || "save").trim().toLowerCase();
+    const testType = String(body?.testType || "unlock").trim().toLowerCase();
+    const selectedTestText =
+        testType === "chat" ? CHAT_TELEGRAM_TEXT : UNLOCK_TELEGRAM_TEXT;
     const rawToken = String(body?.botToken || "").trim();
     const rawChatId = String(body?.chatId || "").trim();
 
@@ -72,11 +77,11 @@ export default async function handler(request) {
             await sendTelegramMessage({
                 botToken: saved.botToken,
                 chatId: saved.chatId,
-                text: UNLOCK_TELEGRAM_TEXT
+                text: selectedTestText
             });
             return jsonResponse(200, {
                 ok: true,
-                message: "Test message Telegram channel me bhej diya gaya!"
+                message: `Test message (${selectedTestText}) Telegram channel me bhej diya gaya!`
             });
         } catch (error) {
             return jsonResponse(400, {
@@ -109,12 +114,12 @@ export default async function handler(request) {
             await sendTelegramMessage({
                 botToken: tokenCheck.value,
                 chatId: chatCheck.value,
-                text: UNLOCK_TELEGRAM_TEXT
+                text: selectedTestText
             });
             return jsonResponse(200, {
                 ok: true,
                 botUsername: botInfo.username,
-                message: "Test message Telegram channel me bhej diya gaya!"
+                message: `Test message (${selectedTestText}) Telegram channel me bhej diya gaya!`
             });
         } catch (error) {
             return jsonResponse(400, {
@@ -138,7 +143,8 @@ export default async function handler(request) {
             chatId: chatCheck.value,
             botUsername: botInfo.username || "",
             updatedAt: saved.updatedAt,
-            unlockMessage: UNLOCK_TELEGRAM_TEXT
+            unlockMessage: UNLOCK_TELEGRAM_TEXT,
+            chatMessage: CHAT_TELEGRAM_TEXT
         });
     } catch (error) {
         return jsonResponse(error?.status || 500, {

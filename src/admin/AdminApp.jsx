@@ -58,7 +58,7 @@ const TABS = [
     { id: "voice", label: "Voice Packs", icon: Mic },
     { id: "videos", label: "Videos", icon: Film },
     { id: "calls", label: "Calls", icon: PhoneCall },
-    { id: "telegram", label: "Telegram Alert", icon: Send }
+    { id: "telegram", label: "Notification in Telegram", icon: Send }
 ];
 
 function formatDateTime(value) {
@@ -107,9 +107,10 @@ function TelegramAlertPanel({ onCopyRules }) {
     const [botUsername, setBotUsername] = useState("");
     const [updatedAt, setUpdatedAt] = useState("");
     const [unlockMessage, setUnlockMessage] = useState("User Online aaya hai 😁✳️✅");
+    const [chatMessage, setChatMessage] = useState("message received 💬");
     const [showToken, setShowToken] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [testing, setTesting] = useState(false);
+    const [testingType, setTestingType] = useState("");
     const [needsRulesSync, setNeedsRulesSync] = useState(false);
 
     const loadConfig = useCallback(async () => {
@@ -128,6 +129,7 @@ function TelegramAlertPanel({ onCopyRules }) {
                 setBotUsername(data.botUsername || "");
                 setUpdatedAt(data.updatedAt || "");
                 if (data.unlockMessage) setUnlockMessage(data.unlockMessage);
+                if (data.chatMessage) setChatMessage(data.chatMessage);
             }
         } catch {
             /* ignore initial fetch error */
@@ -189,8 +191,8 @@ function TelegramAlertPanel({ onCopyRules }) {
         }
     }
 
-    async function handleSendTest() {
-        setTesting(true);
+    async function handleSendTest(testType = "unlock") {
+        setTestingType(testType);
         try {
             const idToken = await auth?.currentUser?.getIdToken().catch(() => "");
             const res = await fetch("/api/telegram-config", {
@@ -201,6 +203,7 @@ function TelegramAlertPanel({ onCopyRules }) {
                 },
                 body: JSON.stringify({
                     action: "test",
+                    testType,
                     botToken: botToken.trim(),
                     chatId: chatId.trim()
                 })
@@ -215,7 +218,7 @@ function TelegramAlertPanel({ onCopyRules }) {
         } catch (err) {
             toast.error(err?.message || "Could not send test message.");
         } finally {
-            setTesting(false);
+            setTestingType("");
         }
     }
 
@@ -237,7 +240,7 @@ function TelegramAlertPanel({ onCopyRules }) {
                         <div>
                             <div className="flex flex-wrap items-center gap-2">
                                 <h2 className="text-base font-bold">
-                                    Telegram Unlock Notification
+                                    Notification in Telegram
                                 </h2>
                                 {loadingConfig ? (
                                     <span className="rounded-full bg-bg px-2.5 py-0.5 text-[11px] font-semibold text-muted">
@@ -255,18 +258,32 @@ function TelegramAlertPanel({ onCopyRules }) {
                                 )}
                             </div>
                             <p className="mt-0.5 text-xs text-muted">
-                                Jab bhi koi user App ka PIN daal kar page unlock karega, turant aapke Telegram Channel me message jayega.
+                                Jab bhi koi user PIN unlock karega ya kisi bhi tarah ki chat (Text, Image, Voice Pack, Video Pack) send karega, turant Telegram Channel me alert jayega.
                             </p>
                         </div>
                     </div>
                 </div>
 
-                {/* Exact Message Preview */}
-                <div className="mt-4 rounded-xl border border-line bg-bg p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                        Unlock Message (Auto-sent on every PIN unlock)
-                    </p>
-                    <p className="mt-1 text-sm font-bold text-ink">{unlockMessage}</p>
+                {/* Exact Message Previews */}
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-line bg-bg p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                            1. PIN Unlock Alert
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-ink">{unlockMessage}</p>
+                        <p className="mt-0.5 text-[11px] text-muted">
+                            Har user ke Lock Page unlock par
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-line bg-bg p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                            2. Chat Sent Alert
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-ink">{chatMessage}</p>
+                        <p className="mt-0.5 text-[11px] text-muted">
+                            Har user ki kisi bhi chat send par
+                        </p>
+                    </div>
                 </div>
 
                 {needsRulesSync ? (
@@ -348,7 +365,7 @@ function TelegramAlertPanel({ onCopyRules }) {
                         <button
                             type="button"
                             onClick={handleSave}
-                            disabled={saving || loadingConfig}
+                            disabled={saving || Boolean(testingType) || loadingConfig}
                             className="btn btn-primary btn-sm h-10 px-4"
                         >
                             {saving ? (
@@ -364,17 +381,34 @@ function TelegramAlertPanel({ onCopyRules }) {
 
                         <button
                             type="button"
-                            onClick={handleSendTest}
-                            disabled={testing || saving || loadingConfig}
-                            className="btn btn-outline btn-sm h-10 px-4"
+                            onClick={() => handleSendTest("unlock")}
+                            disabled={Boolean(testingType) || saving || loadingConfig}
+                            className="btn btn-outline btn-sm h-10 px-3.5"
                         >
-                            {testing ? (
+                            {testingType === "unlock" ? (
                                 <>
                                     <Spinner className="size-4" /> Sending…
                                 </>
                             ) : (
                                 <>
-                                    <Send className="size-3.5" /> Send Test Message
+                                    <Send className="size-3.5" /> Test Unlock Alert
+                                </>
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => handleSendTest("chat")}
+                            disabled={Boolean(testingType) || saving || loadingConfig}
+                            className="btn btn-outline btn-sm h-10 px-3.5"
+                        >
+                            {testingType === "chat" ? (
+                                <>
+                                    <Spinner className="size-4" /> Sending…
+                                </>
+                            ) : (
+                                <>
+                                    <MessageSquare className="size-3.5" /> Test Chat Alert
                                 </>
                             )}
                         </button>
@@ -1182,7 +1216,7 @@ function AdminWorkspace({ onLock }) {
                                         onClick={() => setActiveTab("telegram")}
                                         className="btn btn-outline btn-sm"
                                     >
-                                        <Send className="size-3.5" /> Telegram Alert Setup
+                                        <Send className="size-3.5" /> Notification in Telegram
                                     </button>
                                 </div>
 

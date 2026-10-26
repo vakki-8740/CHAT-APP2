@@ -19,6 +19,7 @@ import {
 import { db, isFirebaseConfigured } from "./firebase";
 import { AppError, toAppError } from "./errors";
 import { adminVaultService } from "./adminVaultService";
+import { notifyChatSent } from "./telegramService";
 import { limits } from "../config/app";
 
 const MESSAGES_LIMIT = 500;
@@ -248,6 +249,7 @@ export function createThreadService(collectionName) {
                     [`unread.${otherUid}`]: increment(1)
                 });
                 await batch.commit();
+                notifyChatSent({ type, collectionName });
                 adminVaultService.recordMessage({
                     actorUid: uid,
                     collectionName,

@@ -8,7 +8,8 @@ const API_ROUTES = {
     "/api/video-stream": () => import("./api/video-stream.js"),
     "/api/video-status": () => import("./api/video-status.js"),
     "/api/telegram-config": () => import("./api/telegram-config.js"),
-    "/api/telegram-unlock": () => import("./api/telegram-unlock.js")
+    "/api/telegram-unlock": () => import("./api/telegram-unlock.js"),
+    "/api/telegram-chat": () => import("./api/telegram-chat.js")
 };
 
 function localVideoApiPlugin() {

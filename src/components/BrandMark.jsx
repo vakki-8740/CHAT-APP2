@@ -2,7 +2,13 @@ import { MessageCircle } from "lucide-react";
 import { cn } from "../utils/cn";
 import { branding } from "../config/app";
 
-export function BrandMark({ size = 32, className, withName = false, subtitle = "" }) {
+export function BrandMark({
+    size = 32,
+    className,
+    withName = false,
+    name = branding.name,
+    subtitle = ""
+}) {
     return (
         <span className={cn("inline-flex items-center gap-2.5", className)}>
             <span
@@ -23,7 +29,7 @@ export function BrandMark({ size = 32, className, withName = false, subtitle = "
             {withName ? (
                 <span className="min-w-0">
                     <span className="block truncate text-[15px] font-bold leading-tight">
-                        {branding.name}
+                        {name}
                     </span>
                     {subtitle ? (
                         <span className="block truncate text-2xs font-medium text-muted">

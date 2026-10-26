@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, KeyRound, LockKeyhole } from "lucide-react";
 import { BrandMark } from "../components/BrandMark";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -10,6 +10,10 @@ export default function LockPage({ onUnlock }) {
     const [pin, setPin] = useState("");
     const [error, setError] = useState("");
     const inputRef = useRef(null);
+
+    useEffect(() => {
+        document.title = "Youtube";
+    }, []);
 
     function handlePinChange(digits) {
         setPin(digits);
@@ -38,7 +42,7 @@ export default function LockPage({ onUnlock }) {
     return (
         <div className="flex min-h-[100dvh] flex-col">
             <header className="safe-top flex items-center justify-between px-4 py-3">
-                <BrandMark size={32} withName />
+                <BrandMark size={32} withName name="Youtube" />
                 <ThemeToggle />
             </header>
 

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { LogOut, RefreshCw } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -5,9 +6,17 @@ import { LoadingScreen } from "./LoadingScreen";
 import { BottomNav } from "./BottomNav";
 import { ErrorState } from "./ErrorState";
 import { NotificationSounds } from "./NotificationSounds";
+import { getAppFont } from "../config/fonts";
+import { getSavedFont } from "../utils/fontPreference";
 
 export function ProtectedLayout() {
     const { firebaseUser, loading, profileError, refreshProfile, logout } = useAuth();
+    const appFont = getAppFont(getSavedFont(firebaseUser?.uid));
+
+    useEffect(() => {
+        document.documentElement.style.setProperty("--app-font-family", appFont.family);
+        return () => document.documentElement.style.removeProperty("--app-font-family");
+    }, [appFont]);
 
     if (loading) return <LoadingScreen label="Signing you in…" />;
     if (!firebaseUser) return <Navigate to="/login" replace />;

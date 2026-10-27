@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, KeyRound, LogOut, Pencil, Phone, X } from "lucide-react";
+import { Camera, Check, KeyRound, LogOut, Pencil, Phone, Type, X } from "lucide-react";
 import { AppHeader } from "../components/AppHeader";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { Avatar } from "../components/Avatar";
@@ -21,6 +21,8 @@ import {
     validatePassword
 } from "../utils/validation";
 import { limits } from "../config/app";
+import { APP_FONTS, getAppFont } from "../config/fonts";
+import { getSavedFont, saveFont } from "../utils/fontPreference";
 
 export default function ProfilePage() {
     const { uid, profile, logout } = useAuth();
@@ -34,6 +36,7 @@ export default function ProfilePage() {
     const [currentPassword, setCurrentPassword] = useState("");
     const [saving, setSaving] = useState(false);
     const [photoUploading, setPhotoUploading] = useState(false);
+    const [fontId, setFontId] = useState(() => getSavedFont(uid));
     const [error, setError] = useState("");
     const [passwordOpen, setPasswordOpen] = useState(false);
     const [passwordCurrent, setPasswordCurrent] = useState("");
@@ -159,6 +162,22 @@ export default function ProfilePage() {
     function togglePasswordForm() {
         resetPasswordForm();
         setPasswordOpen((open) => !open);
+    }
+
+    function handleFontChange(nextFontId) {
+        if (nextFontId === fontId) return;
+        const nextFont = getAppFont(nextFontId);
+        document.documentElement.style.setProperty("--app-font-family", nextFont.family);
+        if (!saveFont(uid, nextFont.id)) {
+            document.documentElement.style.setProperty(
+                "--app-font-family",
+                getAppFont(fontId).family
+            );
+            toast.error("Could not save your font choice on this device.");
+            return;
+        }
+        setFontId(nextFont.id);
+        toast.success(`${nextFont.name} font applied to your app.`);
     }
 
     async function handlePhoto(file) {
@@ -336,6 +355,55 @@ export default function ProfilePage() {
                             </p>
                         </>
                     )}
+                </section>
+
+                <section className="panel mt-4 p-4">
+                    <div className="flex items-start gap-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                            <Type className="size-4" aria-hidden="true" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <h2 className="text-sm font-bold">App text font</h2>
+                            <p className="mt-0.5 text-xs text-muted">
+                                Choose a style for your app text. It stays saved on this device.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {APP_FONTS.map((font) => {
+                            const selected = fontId === font.id;
+                            return (
+                                <button
+                                    key={font.id}
+                                    type="button"
+                                    onClick={() => handleFontChange(font.id)}
+                                    aria-pressed={selected}
+                                    className={`rounded-lg border p-3 text-left transition-colors ${
+                                        selected
+                                            ? "border-accent bg-accent/5 ring-1 ring-accent"
+                                            : "border-line hover:border-accent/60"
+                                    }`}
+                                    style={{ fontFamily: font.family }}
+                                >
+                                    <span className="flex items-center justify-between gap-2">
+                                        <span className="text-sm font-semibold">{font.name}</span>
+                                        {selected ? (
+                                            <Check className="size-4 shrink-0 text-accent" aria-label="Selected" />
+                                        ) : null}
+                                    </span>
+                                    <span className="mt-0.5 block text-2xs text-muted">
+                                        {font.style}
+                                    </span>
+                                    <span className="mt-2 block truncate text-sm">
+                                        Clear, comfortable reading · साफ़ पढ़ाई
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <p className="mt-2 text-2xs text-muted" aria-live="polite">
+                        Saved on this device for this account · applies across chat, voice, video, and profile.
+                    </p>
                 </section>
 
                 <section className="panel mt-4 p-4">

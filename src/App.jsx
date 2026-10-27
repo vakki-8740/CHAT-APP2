@@ -5,6 +5,7 @@ import { CallProvider } from "./context/CallContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { CallOverlay } from "./components/CallOverlay";
+import { OpeningAnimation } from "./components/OpeningAnimation";
 import { ProtectedLayout, TabLayout } from "./components/Layouts";
 import { isFirebaseConfigured, isStorageConfigured } from "./config/env";
 import LockPage from "./pages/LockPage";
@@ -21,20 +22,29 @@ import ProfilePage from "./pages/ProfilePage";
 
 export default function App() {
     const [unlocked, setUnlocked] = useState(false);
+    const [showOpeningAnimation, setShowOpeningAnimation] = useState(false);
 
     useEffect(() => {
         function handlePageShow(event) {
-            if (event.persisted) setUnlocked(false);
+            if (event.persisted) {
+                setUnlocked(false);
+                setShowOpeningAnimation(false);
+            }
         }
         window.addEventListener("pageshow", handlePageShow);
         return () => window.removeEventListener("pageshow", handlePageShow);
     }, []);
 
+    function handleUnlock() {
+        setUnlocked(true);
+        setShowOpeningAnimation(true);
+    }
+
     return (
         <ThemeProvider>
             <ToastProvider>
                 {!unlocked ? (
-                    <LockPage onUnlock={() => setUnlocked(true)} />
+                    <LockPage onUnlock={handleUnlock} />
                 ) : !isFirebaseConfigured ? (
                     <SetupPage />
                 ) : (
@@ -82,6 +92,9 @@ export default function App() {
                         </CallProvider>
                     </AuthProvider>
                 )}
+                {showOpeningAnimation ? (
+                    <OpeningAnimation onComplete={() => setShowOpeningAnimation(false)} />
+                ) : null}
             </ToastProvider>
         </ThemeProvider>
     );

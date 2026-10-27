@@ -217,7 +217,14 @@ export default function ProfilePage() {
 
             <main className="mx-auto w-full max-w-xl px-4 py-5">
                 <section className="panel overflow-hidden">
-                    <div className="h-24 bg-gradient-to-br from-[#2a2350] via-[#4f6bed] to-[#8b5cf6]" />
+                    <div className="aspect-[2.89/1] w-full overflow-hidden bg-gradient-to-br from-[#2a2350] via-[#4f6bed] to-[#8b5cf6]">
+                        <img
+                            src="/profile-banner.png"
+                            alt=""
+                            aria-hidden="true"
+                            className="size-full object-cover object-center"
+                        />
+                    </div>
                     <div className="px-4 pb-4">
                         <div className="-mt-11 flex items-end justify-between gap-2">
                             <div className="relative">

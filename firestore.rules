@@ -72,6 +72,24 @@ service cloud.firestore {
       allow get: if isAdmin() || (signedIn() && (resource == null || isParticipant(resource.data)));
       allow list: if isAdmin() || isParticipant(resource.data);
 
+      function validLastReaction() {
+        let notice = request.resource.data.lastReaction;
+        let reactedMessage = getAfter(/databases/$(database)/documents/chats/$(chatId)/messages/$(notice.messageId));
+        return notice is map
+          && notice.keys().hasOnly(['id', 'senderId', 'receiverId', 'messageId', 'emoji', 'createdAt'])
+          && notice.id is string
+          && notice.senderId == request.auth.uid
+          && notice.receiverId == reactedMessage.data.senderId
+          && notice.receiverId in resource.data.participants
+          && notice.messageId is string
+          && notice.emoji is string
+          && notice.emoji.size() <= 32
+          && reactedMessage.data.reactions[request.auth.uid] is list
+          && reactedMessage.data.reactions[request.auth.uid].size() <= 5
+          && notice.emoji in reactedMessage.data.reactions[request.auth.uid]
+          && notice.createdAt == request.time;
+      }
+
       allow create: if signedIn()
         && validParticipants(request.resource.data)
         && isParticipant(request.resource.data)
@@ -83,14 +101,32 @@ service cloud.firestore {
         && isParticipant(request.resource.data)
         && request.resource.data.participants == resource.data.participants
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'lastMessage', 'unread', 'reads', 'typing', 'updatedAt'
-        ]);
+          'lastMessage', 'unread', 'reads', 'typing', 'lastReaction', 'updatedAt'
+        ])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastReaction'])
+          || validLastReaction()
+        );
 
       allow delete: if false;
 
       match /messages/{messageId} {
         function parentThread() {
           return get(/databases/$(database)/documents/chats/$(chatId));
+        }
+
+        function validOwnReactionUpdate() {
+          let changedReactionUsers = request.resource.data.reactions.diff(resource.data.reactions).affectedKeys();
+          let updatedReactions = request.resource.data.reactions;
+          return changedReactionUsers.hasOnly([request.auth.uid])
+            && (
+              !(request.auth.uid in changedReactionUsers)
+              || !(request.auth.uid in updatedReactions.keys())
+              || (
+                updatedReactions[request.auth.uid] is list
+                && updatedReactions[request.auth.uid].size() <= 5
+              )
+            );
         }
 
         allow read: if isAdmin()
@@ -123,9 +159,12 @@ service cloud.firestore {
                 'deletedForEveryone', 'reactions', 'hiddenFor'
               ])
             )
-            || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'reactions', 'hiddenFor'
-            ])
+            || (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'reactions', 'hiddenFor'
+              ])
+              && validOwnReactionUpdate()
+            )
           );
 
         allow delete: if false;
@@ -139,6 +178,24 @@ service cloud.firestore {
       allow get: if isAdmin() || (signedIn() && (resource == null || isParticipant(resource.data)));
       allow list: if isAdmin() || isParticipant(resource.data);
 
+      function validLastReaction() {
+        let notice = request.resource.data.lastReaction;
+        let reactedMessage = getAfter(/databases/$(database)/documents/voiceChats/$(chatId)/messages/$(notice.messageId));
+        return notice is map
+          && notice.keys().hasOnly(['id', 'senderId', 'receiverId', 'messageId', 'emoji', 'createdAt'])
+          && notice.id is string
+          && notice.senderId == request.auth.uid
+          && notice.receiverId == reactedMessage.data.senderId
+          && notice.receiverId in resource.data.participants
+          && notice.messageId is string
+          && notice.emoji is string
+          && notice.emoji.size() <= 32
+          && reactedMessage.data.reactions[request.auth.uid] is list
+          && reactedMessage.data.reactions[request.auth.uid].size() <= 5
+          && notice.emoji in reactedMessage.data.reactions[request.auth.uid]
+          && notice.createdAt == request.time;
+      }
+
       allow create: if signedIn()
         && validParticipants(request.resource.data)
         && isParticipant(request.resource.data)
@@ -150,14 +207,32 @@ service cloud.firestore {
         && isParticipant(request.resource.data)
         && request.resource.data.participants == resource.data.participants
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'lastMessage', 'unread', 'reads', 'typing', 'updatedAt'
-        ]);
+          'lastMessage', 'unread', 'reads', 'typing', 'lastReaction', 'updatedAt'
+        ])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastReaction'])
+          || validLastReaction()
+        );
 
       allow delete: if false;
 
       match /messages/{messageId} {
         function parentThread() {
           return get(/databases/$(database)/documents/voiceChats/$(chatId));
+        }
+
+        function validOwnReactionUpdate() {
+          let changedReactionUsers = request.resource.data.reactions.diff(resource.data.reactions).affectedKeys();
+          let updatedReactions = request.resource.data.reactions;
+          return changedReactionUsers.hasOnly([request.auth.uid])
+            && (
+              !(request.auth.uid in changedReactionUsers)
+              || !(request.auth.uid in updatedReactions.keys())
+              || (
+                updatedReactions[request.auth.uid] is list
+                && updatedReactions[request.auth.uid].size() <= 5
+              )
+            );
         }
 
         allow read: if isAdmin()
@@ -189,9 +264,12 @@ service cloud.firestore {
                 'deletedForEveryone', 'reactions', 'hiddenFor'
               ])
             )
-            || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'reactions', 'hiddenFor'
-            ])
+            || (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'reactions', 'hiddenFor'
+              ])
+              && validOwnReactionUpdate()
+            )
           );
 
         allow delete: if false;
@@ -206,6 +284,24 @@ service cloud.firestore {
       allow get: if isAdmin() || (signedIn() && (resource == null || isParticipant(resource.data)));
       allow list: if isAdmin() || isParticipant(resource.data);
 
+      function validLastReaction() {
+        let notice = request.resource.data.lastReaction;
+        let reactedMessage = getAfter(/databases/$(database)/documents/videoChats/$(chatId)/messages/$(notice.messageId));
+        return notice is map
+          && notice.keys().hasOnly(['id', 'senderId', 'receiverId', 'messageId', 'emoji', 'createdAt'])
+          && notice.id is string
+          && notice.senderId == request.auth.uid
+          && notice.receiverId == reactedMessage.data.senderId
+          && notice.receiverId in resource.data.participants
+          && notice.messageId is string
+          && notice.emoji is string
+          && notice.emoji.size() <= 32
+          && reactedMessage.data.reactions[request.auth.uid] is list
+          && reactedMessage.data.reactions[request.auth.uid].size() <= 5
+          && notice.emoji in reactedMessage.data.reactions[request.auth.uid]
+          && notice.createdAt == request.time;
+      }
+
       allow create: if signedIn()
         && validParticipants(request.resource.data)
         && isParticipant(request.resource.data)
@@ -217,14 +313,32 @@ service cloud.firestore {
         && isParticipant(request.resource.data)
         && request.resource.data.participants == resource.data.participants
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'lastMessage', 'unread', 'reads', 'typing', 'updatedAt'
-        ]);
+          'lastMessage', 'unread', 'reads', 'typing', 'lastReaction', 'updatedAt'
+        ])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastReaction'])
+          || validLastReaction()
+        );
 
       allow delete: if false;
 
       match /messages/{messageId} {
         function parentThread() {
           return get(/databases/$(database)/documents/videoChats/$(chatId));
+        }
+
+        function validOwnReactionUpdate() {
+          let changedReactionUsers = request.resource.data.reactions.diff(resource.data.reactions).affectedKeys();
+          let updatedReactions = request.resource.data.reactions;
+          return changedReactionUsers.hasOnly([request.auth.uid])
+            && (
+              !(request.auth.uid in changedReactionUsers)
+              || !(request.auth.uid in updatedReactions.keys())
+              || (
+                updatedReactions[request.auth.uid] is list
+                && updatedReactions[request.auth.uid].size() <= 5
+              )
+            );
         }
 
         allow read: if isAdmin()
@@ -260,9 +374,12 @@ service cloud.firestore {
                 'deletedForEveryone', 'reactions', 'hiddenFor'
               ])
             )
-            || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'reactions', 'hiddenFor'
-            ])
+            || (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'reactions', 'hiddenFor'
+              ])
+              && validOwnReactionUpdate()
+            )
           );
 
         allow delete: if false;

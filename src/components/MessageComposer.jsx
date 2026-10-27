@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { ImagePlus, Pencil, Reply, Send, Smile, X } from "lucide-react";
-import { EmojiPicker } from "./EmojiPicker";
+import { useEffect, useRef } from "react";
+import { ImagePlus, Pencil, Reply, Send, X } from "lucide-react";
 import { limits } from "../config/app";
 import { isStorageConfigured } from "../config/env";
 
@@ -19,7 +18,6 @@ export function MessageComposer({
 }) {
     const areaRef = useRef(null);
     const fileRef = useRef(null);
-    const [emojiOpen, setEmojiOpen] = useState(false);
 
     useEffect(() => {
         const area = areaRef.current;
@@ -35,7 +33,6 @@ export function MessageComposer({
     function submit() {
         if (disabled || !value.trim()) return;
         onSend(value.trim());
-        setEmojiOpen(false);
     }
 
     function handleKeyDown(event) {
@@ -102,25 +99,6 @@ export function MessageComposer({
                         </button>
                     </>
                 ) : null}
-
-                <div className="relative mb-0.5">
-                    <button
-                        type="button"
-                        onClick={() => setEmojiOpen((open) => !open)}
-                        className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted hover:bg-bg hover:text-accent"
-                        aria-label="Add emoji"
-                        aria-expanded={emojiOpen}
-                        disabled={disabled}
-                    >
-                        <Smile className="size-5" />
-                    </button>
-                    {emojiOpen ? (
-                        <EmojiPicker
-                            onPick={(emoji) => onChange(value + emoji)}
-                            onClose={() => setEmojiOpen(false)}
-                        />
-                    ) : null}
-                </div>
 
                 <div className="flex min-h-[40px] flex-1 items-center rounded-2xl border border-line bg-bg px-3 py-1.5">
                     <textarea

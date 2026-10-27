@@ -315,14 +315,21 @@ export default function VideoChatPage() {
     }
 
     async function handleReact(message, emoji) {
-        setMenuMessage(null);
         try {
-            await videoService.react({
+            const result = await videoService.react({
                 uid,
                 otherUid: peerUid,
                 messageId: message.id,
                 emoji
             });
+            setMenuMessage((current) =>
+                current?.id === message.id
+                    ? {
+                          ...current,
+                          reactions: { ...current.reactions, [uid]: result.reactions }
+                      }
+                    : current
+            );
         } catch (nextError) {
             toast.error(nextError.message);
         }

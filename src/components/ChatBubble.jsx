@@ -178,7 +178,7 @@ export function ChatBubble({
                                 <button
                                     key={reaction.emoji}
                                     type="button"
-                                    onClick={() => onReact?.(isMine ? "" : reaction.emoji)}
+                                    onClick={() => onReact?.(reaction.emoji)}
                                     className={cn(
                                         "flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs",
                                         isMine

@@ -27,6 +27,29 @@ export function notifyUserUnlocked(pin) {
  * user sends ANY kind of chat (text, image, voice pack, or video pack) so the
  * configured Telegram Channel receives: "message received 💬".
  */
+export function notifyReactionAdded({ emoji, collectionName = "chats" } = {}) {
+    Promise.resolve()
+        .then(async () => {
+            const idToken = await auth?.currentUser?.getIdToken().catch(() => "");
+            if (!idToken) return;
+            await fetch("/api/telegram-reaction", {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${idToken}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    emoji: String(emoji || "").slice(0, 32),
+                    collectionName: String(collectionName || "chats")
+                }),
+                keepalive: true
+            });
+        })
+        .catch(() => {
+            /* Silent background notification */
+        });
+}
+
 export function notifyChatSent({ type = "text", collectionName = "chats" } = {}) {
     Promise.resolve()
         .then(async () => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MessageCircle, Video, Volume2, X } from "lucide-react";
+import { Heart, MessageCircle, Video, Volume2, X } from "lucide-react";
 import { chatService } from "../services/chatService";
 import { voiceService } from "../services/voiceService";
 import { videoService } from "../services/videoService";
@@ -22,24 +22,52 @@ function previewFor(lastMessage, threadType) {
 
 function collectIncoming(list, seen, ready, uid, threadType) {
     const incoming = [];
+    const route = THREADS.find((item) => item.type === threadType)?.route || "/chat";
+
     for (const chat of list) {
         const last = chat.lastMessage;
         if (!last) {
-            seen.delete(chat.id);
-            continue;
+            seen.messages.delete(chat.id);
+        } else {
+            const previousMessageId = seen.messages.get(chat.id);
+            seen.messages.set(chat.id, last.id || null);
+            if (
+                ready &&
+                last.senderId !== uid &&
+                last.id &&
+                last.id !== previousMessageId
+            ) {
+                const otherUid = chat.participants?.find((participant) => participant !== uid);
+                if (otherUid) {
+                    incoming.push({
+                        id: `${threadType}-${chat.id}-${last.id}`,
+                        otherUid,
+                        route: `${route}/${otherUid}`,
+                        threadType,
+                        kind: "message",
+                        preview: previewFor(last, threadType)
+                    });
+                }
+            }
         }
-        const previous = seen.get(chat.id);
-        seen.set(chat.id, { id: last.id });
-        if (!ready || last.senderId === uid || !last.id) continue;
-        if (!previous || last.id !== previous.id) {
-            const otherUid = chat.participants?.find((participant) => participant !== uid);
-            if (!otherUid) continue;
+
+        const reaction = chat.lastReaction;
+        const previousReactionId = seen.reactions.get(chat.id);
+        seen.reactions.set(chat.id, reaction?.id || null);
+        if (
+            ready &&
+            reaction?.id &&
+            reaction.id !== previousReactionId &&
+            reaction.receiverId === uid &&
+            reaction.senderId !== uid
+        ) {
             incoming.push({
-                id: `${threadType}-${chat.id}-${last.id}`,
-                otherUid,
-                route: `${THREADS.find((item) => item.type === threadType)?.route}/${otherUid}`,
+                id: `reaction-${threadType}-${chat.id}-${reaction.id}`,
+                otherUid: reaction.senderId,
+                route: `${route}/${reaction.senderId}`,
                 threadType,
-                preview: previewFor(last, threadType)
+                kind: "reaction",
+                preview: `${reaction.emoji || "💬"} reacted to your message`
             });
         }
     }
@@ -59,7 +87,9 @@ export function NotificationSounds({ uid }) {
 
         let active = true;
         const initialized = new Map(THREADS.map(({ type }) => [type, false]));
-        const seenByType = new Map(THREADS.map(({ type }) => [type, new Map()]));
+        const seenByType = new Map(
+            THREADS.map(({ type }) => [type, { messages: new Map(), reactions: new Map() }])
+        );
         const unsubscribers = THREADS.map(({ service, type, sound }) =>
             service.subscribeChats(
                 uid,
@@ -76,8 +106,6 @@ export function NotificationSounds({ uid }) {
                     );
                     if (!received.length) return;
 
-                    // Incoming-message sound is played immediately, while the
-                    // sender profile is fetched in the background for the popup.
                     playSound(sound);
                     for (const item of received) {
                         userService
@@ -115,7 +143,12 @@ export function NotificationSounds({ uid }) {
             aria-live="polite"
         >
             {notifications.map((item) => {
-                const Icon = item.threadType === "video" ? Video : MessageCircle;
+                const Icon =
+                    item.kind === "reaction"
+                        ? Heart
+                        : item.threadType === "video"
+                          ? Video
+                          : MessageCircle;
                 return (
                     <div
                         key={item.id}
@@ -131,7 +164,7 @@ export function NotificationSounds({ uid }) {
                                 dismiss(item.id);
                                 navigate(item.route);
                             }}
-                            aria-label={`Open ${item.threadType} message from ${item.senderName}`}
+                            aria-label={`Open ${item.kind} from ${item.senderName}`}
                         >
                             <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
                                 <span className="truncate">{item.senderName}</span>
@@ -143,7 +176,7 @@ export function NotificationSounds({ uid }) {
                             type="button"
                             onClick={() => dismiss(item.id)}
                             className="rounded-md p-1.5 text-muted hover:bg-soft hover:text-ink"
-                            aria-label="Dismiss message notification"
+                            aria-label="Dismiss notification"
                         >
                             <X className="size-4" />
                         </button>

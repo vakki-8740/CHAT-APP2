@@ -19,8 +19,9 @@ import {
 import { db, isFirebaseConfigured } from "./firebase";
 import { AppError, toAppError } from "./errors";
 import { adminVaultService } from "./adminVaultService";
-import { notifyChatSent } from "./telegramService";
+import { notifyChatSent, notifyReactionAdded } from "./telegramService";
 import { limits } from "../config/app";
+import { toggleUserReaction } from "../utils/emoji";
 
 const MESSAGES_LIMIT = 500;
 
@@ -423,11 +424,69 @@ export function createThreadService(collectionName) {
 
         async react({ uid, otherUid, messageId, emoji }) {
             requireDb();
+            const cleanEmoji = String(emoji || "").trim();
+            if (!cleanEmoji) {
+                throw new AppError("validation/reaction", "Choose an emoji reaction.");
+            }
+
+            const chatId = makeChatId(uid, otherUid);
+            const targetMessageRef = messageRef(chatId, messageId);
+            const threadRef = chatRef(uid, otherUid);
+
             try {
-                await updateDoc(messageRef(makeChatId(uid, otherUid), messageId), {
-                    [`reactions.${uid}`]: emoji ? emoji : deleteField()
+                const result = await runTransaction(db, async (transaction) => {
+                    const messageSnap = await transaction.get(targetMessageRef);
+                    const threadSnap = await transaction.get(threadRef);
+                    if (!messageSnap.exists() || !threadSnap.exists()) {
+                        throw new AppError("not-found/message", "This message is no longer available.");
+                    }
+                    const message = messageSnap.data();
+                    if (message.deletedForEveryone) {
+                        throw new AppError("validation/reaction", "Deleted messages cannot be reacted to.");
+                    }
+
+                    const toggled = toggleUserReaction(message.reactions, uid, cleanEmoji);
+                    if (!toggled.ok) {
+                        throw new AppError(
+                            "validation/reaction-limit",
+                            "You can add up to 5 different reactions to one message."
+                        );
+                    }
+
+                    transaction.update(targetMessageRef, {
+                        reactions: toggled.reactionMap
+                    });
+
+                    if (toggled.added) {
+                        const senderId = String(message.senderId || "");
+                        if (senderId && senderId !== uid) {
+                            const noticeId = doc(
+                                collection(db, collectionName, chatId, "messages")
+                            ).id;
+                            const notification = {
+                                id: noticeId,
+                                senderId: uid,
+                                receiverId: senderId,
+                                messageId,
+                                emoji: cleanEmoji,
+                                createdAt: serverTimestamp()
+                            };
+                            transaction.update(threadRef, {
+                                lastReaction: notification,
+                                updatedAt: serverTimestamp()
+                            });
+                        }
+                    }
+
+                    return { added: toggled.added, reactions: toggled.reactions };
                 });
+
+                if (result.added) {
+                    notifyReactionAdded({ emoji: cleanEmoji, collectionName });
+                }
+                return result;
             } catch (error) {
+                if (error instanceof AppError) throw error;
                 throw toAppError(error, "Could not update the reaction.");
             }
         },

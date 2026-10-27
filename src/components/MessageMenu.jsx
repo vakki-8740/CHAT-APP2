@@ -1,5 +1,5 @@
 import { Ban, Copy, Pencil, Reply, Trash2, Users, X } from "lucide-react";
-import { REACTION_PALETTE } from "../utils/emoji";
+import { MAX_REACTIONS_PER_USER, REACTION_PALETTE, userReactionsFor } from "../utils/emoji";
 import { cn } from "../utils/cn";
 
 function Action({ icon: Icon, label, onClick, danger = false }) {
@@ -34,7 +34,8 @@ export function MessageMenu({
     if (!message) return null;
 
     const deleted = Boolean(message.deletedForEveryone);
-    const currentReaction = message.reactions?.[currentUid] || "";
+    const currentReactions = userReactionsFor(message.reactions, currentUid);
+    const atReactionLimit = currentReactions.length >= MAX_REACTIONS_PER_USER;
     const canCopy = !deleted && message.type === "text" && Boolean(message.text);
     const canEdit = mine && !deleted && message.type === "text";
 
@@ -56,24 +57,31 @@ export function MessageMenu({
 
                 {!deleted ? (
                     <div className="border-b border-line py-3">
+                        <p className="mb-2 px-4 text-xs font-semibold text-muted">
+                            Reactions · {currentReactions.length}/{MAX_REACTIONS_PER_USER}
+                        </p>
                         <div className="scrollbar-thin flex snap-x flex-nowrap items-center gap-1 overflow-x-auto overscroll-x-contain px-3 pb-1 select-none">
-                            {REACTION_PALETTE.map((emoji) => (
-                                <button
-                                    key={emoji}
-                                    type="button"
-                                    onClick={() => onReact(currentReaction === emoji ? "" : emoji)}
-                                    className={cn(
-                                        "flex size-10 shrink-0 snap-start items-center justify-center rounded-full text-xl transition-transform hover:scale-110",
-                                        currentReaction === emoji
-                                            ? "bg-accent-soft ring-1 ring-accent"
-                                            : "hover:bg-bg"
-                                    )}
-                                    aria-label={`React with ${emoji}`}
-                                    aria-pressed={currentReaction === emoji}
-                                >
-                                    {emoji}
-                                </button>
-                            ))}
+                            {REACTION_PALETTE.map((emoji) => {
+                                const selected = currentReactions.includes(emoji);
+                                return (
+                                    <button
+                                        key={emoji}
+                                        type="button"
+                                        onClick={() => onReact(emoji)}
+                                        disabled={!selected && atReactionLimit}
+                                        className={cn(
+                                            "flex size-10 shrink-0 snap-start items-center justify-center rounded-full text-xl transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-35",
+                                            selected
+                                                ? "bg-accent-soft ring-1 ring-accent"
+                                                : "hover:bg-bg"
+                                        )}
+                                        aria-label={`${selected ? "Remove" : "React with"} ${emoji}`}
+                                        aria-pressed={selected}
+                                    >
+                                        {emoji}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 ) : null}

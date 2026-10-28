@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 /** Live chat document + messages for one private conversation. */
-export function useThread(service, uid, otherUid) {
+export function useThread(service, uid, otherUid, options = {}) {
+    const messageDate = options.messageDate || null;
+    const messageLimit = options.messageLimit;
     const [chat, setChat] = useState(null);
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -54,7 +56,8 @@ export function useThread(service, uid, otherUid) {
                 messagesReady = true;
                 finish();
             },
-            fail
+            fail,
+            { date: messageDate, limit: messageLimit }
         );
 
         return () => {
@@ -62,7 +65,7 @@ export function useThread(service, uid, otherUid) {
             stopChat();
             stopMessages();
         };
-    }, [service, uid, otherUid, attempt]);
+    }, [service, uid, otherUid, attempt, messageDate, messageLimit]);
 
     return { chat, messages, loading, error, retry };
 }

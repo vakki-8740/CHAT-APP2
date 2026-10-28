@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, MessageSquare, WifiOff } from "lucide-react";
+import { ArrowLeft, CalendarDays, MessageSquare, WifiOff, X } from "lucide-react";
 import { Avatar } from "../components/Avatar";
 import { ChatBubble } from "../components/ChatBubble";
 import { DayDivider } from "../components/DayDivider";
@@ -19,8 +19,10 @@ import { userService, isOnline } from "../services/userService";
 import { storageStatus, uploadFile } from "../services/storageAdapter";
 import { validateFile } from "../utils/validation";
 import { playSound } from "../utils/sounds";
-import { toDate } from "../utils/format";
+import { dateFromKey, formatDayLabel, localDateKey, toDate } from "../utils/format";
 import { cn } from "../utils/cn";
+
+const INITIAL_MESSAGES_LIMIT = 50;
 
 export default function ChatPage() {
     const { uid: peerUid } = useParams();
@@ -30,7 +32,15 @@ export default function ChatPage() {
 
     const [peer, setPeer] = useState(null);
     const [peerError, setPeerError] = useState("");
-    const { chat, messages, loading, error, retry } = useThread(chatService, uid, peerUid);
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [datePickerOpen, setDatePickerOpen] = useState(false);
+    const [messageDays, setMessageDays] = useState([]);
+    const [daysLoading, setDaysLoading] = useState(false);
+    const [daysError, setDaysError] = useState("");
+    const { chat, messages, loading, error, retry } = useThread(chatService, uid, peerUid, {
+        messageDate: selectedDate,
+        messageLimit: selectedDate ? 500 : INITIAL_MESSAGES_LIMIT
+    });
 
     const [draft, setDraft] = useState("");
     const [replyTo, setReplyTo] = useState(null);
@@ -47,6 +57,7 @@ export default function ChatPage() {
     const typingTimer = useRef(null);
     const typingSent = useRef(false);
     const typingLastWrite = useRef(0);
+    const dayRequest = useRef(0);
 
     useEffect(() => {
         if (peerUid === uid) navigate("/", { replace: true });
@@ -59,6 +70,12 @@ export default function ChatPage() {
         setDraft("");
         setMenuMessage(null);
         setConfirm(null);
+        setSelectedDate(null);
+        setDatePickerOpen(false);
+        setMessageDays([]);
+        setDaysError("");
+        setDaysLoading(false);
+        dayRequest.current += 1;
         previousCount.current = 0;
     }, [peerUid]);
 
@@ -143,22 +160,62 @@ export default function ChatPage() {
             messages.filter(
                 (message) =>
                     !(Array.isArray(message.hiddenFor) && message.hiddenFor.includes(uid)) &&
+                    (!selectedDate || localDateKey(message.createdAt) === selectedDate) &&
                     !pending.some((item) => item.id === message.id)
             ),
-        [messages, uid, pending]
+        [messages, uid, pending, selectedDate]
     );
 
     const combined = useMemo(() => {
         const list = [...visibleMessages];
         for (const item of pending) {
+            if (selectedDate && localDateKey(item.createdAt) !== selectedDate) continue;
             if (!list.some((message) => message.id === item.id)) list.push(item);
         }
         return list;
-    }, [visibleMessages, pending]);
+    }, [visibleMessages, pending, selectedDate]);
 
     function resolveName(id) {
         if (id === uid) return profile?.displayName || "You";
         return peer?.displayName || "User";
+    }
+
+    async function loadMessageDays() {
+        if (!uid || !peerUid) return;
+        const request = ++dayRequest.current;
+        setDaysLoading(true);
+        setDaysError("");
+        try {
+            const days = await chatService.listMessageDays(uid, peerUid);
+            if (request === dayRequest.current) setMessageDays(days);
+        } catch (nextError) {
+            if (request === dayRequest.current) {
+                setDaysError(nextError.message || "Could not load the chat dates.");
+            }
+        } finally {
+            if (request === dayRequest.current) setDaysLoading(false);
+        }
+    }
+
+    function toggleDatePicker() {
+        if (datePickerOpen) {
+            setDatePickerOpen(false);
+            return;
+        }
+        setDatePickerOpen(true);
+        if (!messageDays.length && !daysLoading) loadMessageDays();
+    }
+
+    function chooseMessageDay(date) {
+        setSelectedDate(date);
+        setDatePickerOpen(false);
+        previousCount.current = 0;
+    }
+
+    function showLatestMessages() {
+        setSelectedDate(null);
+        setDatePickerOpen(false);
+        previousCount.current = 0;
     }
 
     function stopTyping() {
@@ -420,20 +477,127 @@ export default function ChatPage() {
             />
 
             <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 scrollbar-thin">
+                <div className="mx-auto mb-3 flex w-full max-w-xl flex-col items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                        {selectedDate ? (
+                            <button
+                                type="button"
+                                onClick={showLatestMessages}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-accent"
+                            >
+                                <ArrowLeft className="size-3.5" /> Latest messages
+                            </button>
+                        ) : null}
+                        <button
+                            type="button"
+                            onClick={toggleDatePicker}
+                            aria-expanded={datePickerOpen}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold text-ink shadow-sm transition-colors hover:border-accent/50 hover:text-accent"
+                        >
+                            <CalendarDays className="size-3.5" />
+                            {selectedDate
+                                ? `Viewing ${formatDayLabel(dateFromKey(selectedDate))}`
+                                : "Browse chat by date"}
+                            {datePickerOpen ? <X className="size-3.5" /> : null}
+                        </button>
+                    </div>
+
+                    {datePickerOpen ? (
+                        <section className="w-full max-w-sm rounded-xl border border-line bg-card p-3 shadow-card">
+                            <div className="flex items-center justify-between gap-2">
+                                <div>
+                                    <h2 className="text-xs font-bold">Choose a day</h2>
+                                    <p className="mt-0.5 text-2xs text-muted">
+                                        Only that day’s messages will be shown.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setDatePickerOpen(false)}
+                                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-bg hover:text-ink"
+                                    aria-label="Close date list"
+                                >
+                                    <X className="size-4" />
+                                </button>
+                            </div>
+
+                            {daysLoading ? (
+                                <LoadingScreen inline label="Finding chat dates…" />
+                            ) : daysError ? (
+                                <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-danger/5 px-3 py-2 text-xs text-danger">
+                                    <span>{daysError}</span>
+                                    <button
+                                        type="button"
+                                        onClick={loadMessageDays}
+                                        className="shrink-0 font-semibold underline"
+                                    >
+                                        Retry
+                                    </button>
+                                </div>
+                            ) : messageDays.length ? (
+                                <div className="mt-3 max-h-56 space-y-1 overflow-y-auto scrollbar-thin">
+                                    {messageDays.map((day) => (
+                                        <button
+                                            key={day.date}
+                                            type="button"
+                                            onClick={() => chooseMessageDay(day.date)}
+                                            aria-pressed={selectedDate === day.date}
+                                            className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+                                                selectedDate === day.date
+                                                    ? "bg-accent-soft text-accent"
+                                                    : "hover:bg-bg"
+                                            }`}
+                                        >
+                                            <span className="font-semibold">
+                                                {formatDayLabel(dateFromKey(day.date))}
+                                            </span>
+                                            <span className="shrink-0 text-2xs text-muted">
+                                                {day.count} {day.count === 1 ? "message" : "messages"}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="mt-3 rounded-lg bg-bg px-3 py-2 text-xs text-muted">
+                                    No earlier chat dates found.
+                                </p>
+                            )}
+                        </section>
+                    ) : null}
+                </div>
+
                 {loading ? (
                     <LoadingScreen inline label="Loading messages…" />
                 ) : combined.length === 0 ? (
-                    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-                        <span className="flex size-12 items-center justify-center rounded-full bg-accent-soft text-accent">
-                            <MessageSquare className="size-6" />
-                        </span>
-                        <p className="text-sm font-semibold">
-                            No messages yet with {peer?.displayName || "this user"}
-                        </p>
-                        <p className="text-xs text-muted">
-                            Send the first message to start the conversation.
-                        </p>
-                    </div>
+                    selectedDate ? (
+                        <div className="flex h-[60%] flex-col items-center justify-center gap-2 px-6 text-center">
+                            <span className="flex size-12 items-center justify-center rounded-full bg-accent-soft text-accent">
+                                <CalendarDays className="size-6" />
+                            </span>
+                            <p className="text-sm font-semibold">
+                                No messages on {formatDayLabel(dateFromKey(selectedDate))}
+                            </p>
+                            <button
+                                type="button"
+                                onClick={showLatestMessages}
+                                className="mt-1 text-xs font-semibold text-accent hover:underline"
+                            >
+                                Back to latest messages
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex h-[60%] flex-col items-center justify-center gap-2 px-6 text-center">
+                            <span className="flex size-12 items-center justify-center rounded-full bg-accent-soft text-accent">
+                                <MessageSquare className="size-6" />
+                            </span>
+                            <p className="text-sm font-semibold">
+                                No messages yet with {peer?.displayName || "this user"}
+                            </p>
+                            <p className="text-xs text-muted">
+                                Send the first message to start the conversation.
+                            </p>
+                        </div>
+                    )
                 ) : (
                     <>
                         {peerError ? (

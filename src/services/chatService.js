@@ -11,6 +11,7 @@ import {
     where,
     orderBy,
     limit,
+    startAfter,
     serverTimestamp,
     increment,
     arrayUnion,
@@ -22,6 +23,7 @@ import { adminVaultService } from "./adminVaultService";
 import { notifyChatSent, notifyReactionAdded } from "./telegramService";
 import { limits } from "../config/app";
 import { toggleUserReaction } from "../utils/emoji";
+import { dateFromKey, localDateKey, toDate } from "../utils/format";
 
 const MESSAGES_LIMIT = 500;
 
@@ -112,33 +114,95 @@ export function createThreadService(collectionName) {
             );
         },
 
-        subscribeMessages(uid, otherUid, onData, onError) {
+        subscribeMessages(uid, otherUid, onData, onError, options = {}) {
             if (!isFirebaseConfigured || !db) {
                 onData([]);
                 return () => {};
             }
             const chatId = makeChatId(uid, otherUid);
-            // Newest 500 first, then reversed so the UI shows them in
-            // chronological order (and long histories still show the latest).
-            const q = query(
-                collection(db, collectionName, chatId, "messages"),
-                orderBy("createdAt", "desc"),
-                limit(MESSAGES_LIMIT)
+            const messageCollection = collection(db, collectionName, chatId, "messages");
+            const { date = null, limit: requestedLimit = MESSAGES_LIMIT } = options;
+            const messageLimit = Math.min(
+                MESSAGES_LIMIT,
+                Math.max(1, Number(requestedLimit) || MESSAGES_LIMIT)
             );
+            let messageQuery;
+
+            if (date) {
+                const start = dateFromKey(date);
+                if (!start) {
+                    onError?.(new AppError("validation/date", "Choose a valid chat date."));
+                    return () => {};
+                }
+                const end = new Date(start);
+                end.setDate(end.getDate() + 1);
+                messageQuery = query(
+                    messageCollection,
+                    where("createdAt", ">=", start),
+                    where("createdAt", "<", end),
+                    orderBy("createdAt", "desc"),
+                    limit(messageLimit)
+                );
+            } else {
+                // Keep the initial view lightweight, newest first; reverse it
+                // for chronological display in the chat timeline.
+                messageQuery = query(
+                    messageCollection,
+                    orderBy("createdAt", "desc"),
+                    limit(messageLimit)
+                );
+            }
+
             return onSnapshot(
-                q,
-                (snap) =>
-                    onData(
-                        snap.docs
-                            .map((d) => ({
-                                id: d.id,
-                                ...d.data(),
-                                pending: d.metadata.hasPendingWrites
-                            }))
-                            .reverse()
-                    ),
+                messageQuery,
+                (snap) => {
+                    const list = snap.docs.map((d) => ({
+                        id: d.id,
+                        ...d.data(),
+                        pending: d.metadata.hasPendingWrites
+                    }));
+                    onData(list.reverse());
+                },
                 (error) => onError?.(toAppError(error))
             );
+        },
+
+        async listMessageDays(uid, otherUid) {
+            requireDb();
+            const messagesRef = collection(
+                db,
+                collectionName,
+                makeChatId(uid, otherUid),
+                "messages"
+            );
+            const dayCounts = new Map();
+            let cursor = null;
+
+            try {
+                while (true) {
+                    const constraints = [orderBy("createdAt", "desc"), limit(MESSAGES_LIMIT)];
+                    if (cursor) constraints.push(startAfter(cursor));
+                    const snap = await getDocs(query(messagesRef, ...constraints));
+
+                    for (const messageDoc of snap.docs) {
+                        const message = messageDoc.data();
+                        if (Array.isArray(message.hiddenFor) && message.hiddenFor.includes(uid)) {
+                            continue;
+                        }
+                        const day = localDateKey(toDate(message.createdAt));
+                        if (day) dayCounts.set(day, (dayCounts.get(day) || 0) + 1);
+                    }
+
+                    if (snap.docs.length < MESSAGES_LIMIT) break;
+                    cursor = snap.docs[snap.docs.length - 1];
+                }
+
+                return [...dayCounts.entries()]
+                    .sort(([left], [right]) => right.localeCompare(left))
+                    .map(([date, count]) => ({ date, count }));
+            } catch (error) {
+                throw toAppError(error, "Could not load the dates for this conversation.");
+            }
         },
 
         async ensureChat(uid, otherUid) {

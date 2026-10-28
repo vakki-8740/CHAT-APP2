@@ -6,6 +6,23 @@ export function toDate(value) {
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
+export function localDateKey(value) {
+    const d = toDate(value);
+    if (!d) return "";
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+export function dateFromKey(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+    if (!match) return null;
+    const [, year, month, day] = match;
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    return localDateKey(date) === value ? date : null;
+}
+
 export function formatTime(value) {
     const d = toDate(value);
     if (!d) return "";

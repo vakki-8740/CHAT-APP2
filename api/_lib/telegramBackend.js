@@ -4,6 +4,15 @@ export const UNLOCK_TELEGRAM_TEXT = "User Online aaya hai 😁✳️✅";
 export const CHAT_TELEGRAM_TEXT = "message received 💬";
 export const APP_LOCK_PIN = "272026";
 
+export function formatUnlockTelegramText(userName) {
+    const cleanName = String(userName || "Unknown user")
+        .replace(/[\r\n]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80) || "Unknown user";
+    return `${UNLOCK_TELEGRAM_TEXT}\nName: ${cleanName}`;
+}
+
 const DEFAULT_FIREBASE_PROJECT_ID = "chat-app2-5cd36";
 
 function bytesToBase64Url(bytes) {

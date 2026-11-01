@@ -106,7 +106,7 @@ function TelegramAlertPanel({ onCopyRules }) {
     const [chatId, setChatId] = useState("");
     const [botUsername, setBotUsername] = useState("");
     const [updatedAt, setUpdatedAt] = useState("");
-    const [unlockMessage, setUnlockMessage] = useState("User Online aaya hai 😁✳️✅");
+    const [unlockMessage, setUnlockMessage] = useState("User Online aaya hai 😁✳️✅\nName: [User name]");
     const [chatMessage, setChatMessage] = useState("message received 💬");
     const [showToken, setShowToken] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -272,7 +272,7 @@ function TelegramAlertPanel({ onCopyRules }) {
                         </p>
                         <p className="mt-1 text-sm font-bold text-ink">{unlockMessage}</p>
                         <p className="mt-0.5 text-[11px] text-muted">
-                            Har user ke Lock Page unlock par
+                            PIN unlock ke baad authenticated user ke naam ke saath
                         </p>
                     </div>
                     <div className="rounded-xl border border-line bg-bg p-3">

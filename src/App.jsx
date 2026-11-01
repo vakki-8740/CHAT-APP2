@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CallProvider } from "./context/CallContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
@@ -8,6 +8,8 @@ import { CallOverlay } from "./components/CallOverlay";
 import { OpeningAnimation } from "./components/OpeningAnimation";
 import { ProtectedLayout, TabLayout } from "./components/Layouts";
 import { isFirebaseConfigured, isStorageConfigured } from "./config/env";
+import { APP_LOCK_PIN } from "./config/app";
+import { notifyUserUnlocked } from "./services/telegramService";
 import LockPage from "./pages/LockPage";
 import SetupPage from "./pages/SetupPage";
 import LoginPage from "./pages/LoginPage";
@@ -19,6 +21,19 @@ import VoiceChatPage from "./pages/VoiceChatPage";
 import VideoPackPage from "./pages/VideoPackPage";
 import VideoChatPage from "./pages/VideoChatPage";
 import ProfilePage from "./pages/ProfilePage";
+
+function TelegramUnlockNotifier() {
+    const { profile, loading } = useAuth();
+    const sent = useRef(false);
+
+    useEffect(() => {
+        if (sent.current || loading || !profile?.displayName) return;
+        sent.current = true;
+        notifyUserUnlocked(APP_LOCK_PIN, profile.displayName);
+    }, [profile, loading]);
+
+    return null;
+}
 
 export default function App() {
     const [unlocked, setUnlocked] = useState(false);
@@ -49,6 +64,7 @@ export default function App() {
                     <SetupPage />
                 ) : (
                     <AuthProvider>
+                        <TelegramUnlockNotifier />
                         <CallProvider>
                             <BrowserRouter>
                                 <Routes>

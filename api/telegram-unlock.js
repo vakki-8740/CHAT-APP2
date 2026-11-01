@@ -1,7 +1,7 @@
 import { corsHeaders, jsonResponse } from "./_lib/videoBackend.js";
 import {
     APP_LOCK_PIN,
-    UNLOCK_TELEGRAM_TEXT,
+    formatUnlockTelegramText,
     readTelegramConfig,
     sendTelegramMessage
 } from "./_lib/telegramBackend.js";
@@ -24,6 +24,7 @@ export default async function handler(request) {
     }
 
     const pin = String(body?.pin || "").trim();
+    const userName = String(body?.userName || "Unknown user");
     if (pin !== APP_LOCK_PIN) {
         return jsonResponse(403, { error: "Unauthorized unlock pin." });
     }
@@ -37,7 +38,7 @@ export default async function handler(request) {
         await sendTelegramMessage({
             botToken: configData.botToken,
             chatId: configData.chatId,
-            text: UNLOCK_TELEGRAM_TEXT
+            text: formatUnlockTelegramText(userName)
         });
         return jsonResponse(200, { ok: true });
     } catch {

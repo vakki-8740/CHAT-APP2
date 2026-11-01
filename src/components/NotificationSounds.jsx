@@ -1,16 +1,36 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, Video, Volume2, X } from "lucide-react";
+import { Volume2, X } from "lucide-react";
+import { Avatar } from "./Avatar";
 import { chatService } from "../services/chatService";
 import { voiceService } from "../services/voiceService";
 import { videoService } from "../services/videoService";
+import { reactionNotificationService } from "../services/reactionNotificationService";
 import { userService } from "../services/userService";
 import { playSound } from "../utils/sounds";
 
 const THREADS = [
-    { service: chatService, type: "chat", route: "/chat", sound: "messageReceived" },
-    { service: voiceService, type: "voice", route: "/voice", sound: "voiceReceived" },
-    { service: videoService, type: "video", route: "/video", sound: "messageReceived" }
+    {
+        service: chatService,
+        type: "chat",
+        collectionName: "chats",
+        route: "/chat",
+        sound: "messageReceived"
+    },
+    {
+        service: voiceService,
+        type: "voice",
+        collectionName: "voiceChats",
+        route: "/voice",
+        sound: "voiceReceived"
+    },
+    {
+        service: videoService,
+        type: "video",
+        collectionName: "videoChats",
+        route: "/video",
+        sound: "messageReceived"
+    }
 ];
 
 function previewFor(lastMessage, threadType) {
@@ -20,56 +40,31 @@ function previewFor(lastMessage, threadType) {
     return String(lastMessage?.text || "Sent you a message").trim().slice(0, 90);
 }
 
-function collectIncoming(list, seen, ready, uid, threadType) {
+function collectIncoming(list, seen, ready, uid, thread) {
     const incoming = [];
-    const route = THREADS.find((item) => item.type === threadType)?.route || "/chat";
-
     for (const chat of list) {
         const last = chat.lastMessage;
         if (!last) {
-            seen.messages.delete(chat.id);
-        } else {
-            const previousMessageId = seen.messages.get(chat.id);
-            seen.messages.set(chat.id, last.id || null);
-            if (
-                ready &&
-                last.senderId !== uid &&
-                last.id &&
-                last.id !== previousMessageId
-            ) {
-                const otherUid = chat.participants?.find((participant) => participant !== uid);
-                if (otherUid) {
-                    incoming.push({
-                        id: `${threadType}-${chat.id}-${last.id}`,
-                        otherUid,
-                        route: `${route}/${otherUid}`,
-                        threadType,
-                        kind: "message",
-                        preview: previewFor(last, threadType)
-                    });
-                }
-            }
+            seen.set(chat.id, null);
+            continue;
         }
 
-        const reaction = chat.lastReaction;
-        const previousReactionId = seen.reactions.get(chat.id);
-        seen.reactions.set(chat.id, reaction?.id || null);
-        if (
-            ready &&
-            reaction?.id &&
-            reaction.id !== previousReactionId &&
-            reaction.receiverId === uid &&
-            reaction.senderId !== uid
-        ) {
-            incoming.push({
-                id: `reaction-${threadType}-${chat.id}-${reaction.id}`,
-                otherUid: reaction.senderId,
-                route: `${route}/${reaction.senderId}`,
-                threadType,
-                kind: "reaction",
-                preview: `${reaction.emoji || "💬"} reacted to your message`
-            });
+        const previousMessageId = seen.get(chat.id);
+        seen.set(chat.id, last.id || null);
+        if (!ready || last.senderId === uid || !last.id || last.id === previousMessageId) {
+            continue;
         }
+
+        const otherUid = chat.participants?.find((participant) => participant !== uid);
+        if (!otherUid) continue;
+        incoming.push({
+            id: `${thread.type}-${chat.id}-${last.id}`,
+            otherUid,
+            route: `${thread.route}/${otherUid}`,
+            threadType: thread.type,
+            kind: "message",
+            preview: previewFor(last, thread.type)
+        });
     }
     return incoming;
 }
@@ -86,51 +81,100 @@ export function NotificationSounds({ uid }) {
         if (!uid) return undefined;
 
         let active = true;
-        const initialized = new Map(THREADS.map(({ type }) => [type, false]));
-        const seenByType = new Map(
-            THREADS.map(({ type }) => [type, { messages: new Map(), reactions: new Map() }])
+        let reactionNotificationsInitialized = false;
+        const initializedThreads = new Map(THREADS.map((thread) => [thread.type, false]));
+        const seenMessagesByType = new Map(
+            THREADS.map((thread) => [thread.type, new Map()])
         );
-        const unsubscribers = THREADS.map(({ service, type, sound }) =>
-            service.subscribeChats(
+        const seenReactionNotificationIds = new Set();
+        const profilesByUid = new Map();
+
+        const getProfile = (userId) => {
+            if (!profilesByUid.has(userId)) {
+                profilesByUid.set(userId, userService.getProfile(userId).catch(() => null));
+            }
+            return profilesByUid.get(userId);
+        };
+
+        const enqueueWithProfile = (item, sound) => {
+            playSound(sound);
+            getProfile(item.otherUid).then((sender) => {
+                if (!active) return;
+                setNotifications((current) => [
+                    ...current,
+                    {
+                        ...item,
+                        senderName: sender?.displayName || "New message",
+                        senderPhotoURL: sender?.photoURL || ""
+                    }
+                ]);
+                window.setTimeout(() => dismiss(item.id), 7000);
+            });
+        };
+
+        const unsubscribers = THREADS.map((thread) =>
+            thread.service.subscribeChats(
                 uid,
                 (list, meta) => {
                     if (!active || meta?.fromCache) return;
-                    const ready = initialized.get(type);
-                    initialized.set(type, true);
+                    const ready = initializedThreads.get(thread.type);
+                    initializedThreads.set(thread.type, true);
                     const received = collectIncoming(
                         list,
-                        seenByType.get(type),
+                        seenMessagesByType.get(thread.type),
                         ready,
                         uid,
-                        type
+                        thread
                     );
-                    if (!received.length) return;
-
-                    playSound(sound);
-                    for (const item of received) {
-                        userService
-                            .getProfile(item.otherUid)
-                            .catch(() => null)
-                            .then((sender) => {
-                                if (!active) return;
-                                setNotifications((current) => [
-                                    ...current.slice(-2),
-                                    {
-                                        ...item,
-                                        senderName: sender?.displayName || "New message"
-                                    }
-                                ]);
-                                window.setTimeout(() => dismiss(item.id), 7000);
-                            });
-                    }
+                    received.forEach((item) => enqueueWithProfile(item, thread.sound));
                 },
                 () => {}
             )
         );
 
+        const stopReactionNotifications = reactionNotificationService.subscribe(
+            uid,
+            (items, meta) => {
+                if (!active || meta?.fromCache) return;
+
+                if (!reactionNotificationsInitialized) {
+                    items.forEach((item) => seenReactionNotificationIds.add(item.id));
+                    reactionNotificationsInitialized = true;
+                    return;
+                }
+
+                const newItems = [];
+                for (const item of items) {
+                    if (seenReactionNotificationIds.has(item.id)) continue;
+                    seenReactionNotificationIds.add(item.id);
+                    const thread = THREADS.find(
+                        (candidate) => candidate.collectionName === item.collectionName
+                    );
+                    if (!thread || item.receiverUid !== uid || !item.senderUid) continue;
+                    newItems.push({
+                        id: `reaction-${item.id}`,
+                        otherUid: item.senderUid,
+                        route: `${thread.route}/${item.senderUid}`,
+                        threadType: thread.type,
+                        kind: "reaction",
+                        preview: `${item.emoji || "💬"} reacted to your message`
+                    });
+                }
+
+                newItems.forEach((item) =>
+                    enqueueWithProfile(
+                        item,
+                        item.threadType === "voice" ? "voiceReceived" : "messageReceived"
+                    )
+                );
+            },
+            () => {}
+        );
+
         return () => {
             active = false;
             unsubscribers.forEach((unsubscribe) => unsubscribe());
+            stopReactionNotifications();
         };
     }, [uid, dismiss]);
 
@@ -142,47 +186,42 @@ export function NotificationSounds({ uid }) {
             role="status"
             aria-live="polite"
         >
-            {notifications.map((item) => {
-                const Icon =
-                    item.kind === "reaction"
-                        ? Heart
-                        : item.threadType === "video"
-                          ? Video
-                          : MessageCircle;
-                return (
-                    <div
-                        key={item.id}
-                        className="animate-fade-in pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-xl border border-line bg-card p-3 shadow-card"
+            {notifications.map((item) => (
+                <div
+                    key={item.id}
+                    className="animate-fade-in pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-xl border border-line bg-card p-3 shadow-card"
+                >
+                    <Avatar
+                        name={item.senderName}
+                        src={item.senderPhotoURL}
+                        uid={item.otherUid}
+                        size="md"
+                    />
+                    <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => {
+                            dismiss(item.id);
+                            navigate(item.route);
+                        }}
+                        aria-label={`Open ${item.kind} from ${item.senderName}`}
                     >
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
-                            <Icon className="size-5" aria-hidden="true" />
-                        </div>
-                        <button
-                            type="button"
-                            className="min-w-0 flex-1 text-left"
-                            onClick={() => {
-                                dismiss(item.id);
-                                navigate(item.route);
-                            }}
-                            aria-label={`Open ${item.kind} from ${item.senderName}`}
-                        >
-                            <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
-                                <span className="truncate">{item.senderName}</span>
-                                <Volume2 className="size-3.5 shrink-0 text-accent" aria-label="Sound played" />
-                            </span>
-                            <span className="block truncate text-xs text-muted">{item.preview}</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => dismiss(item.id)}
-                            className="rounded-md p-1.5 text-muted hover:bg-soft hover:text-ink"
-                            aria-label="Dismiss notification"
-                        >
-                            <X className="size-4" />
-                        </button>
-                    </div>
-                );
-            })}
+                        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                            <span className="truncate">{item.senderName}</span>
+                            <Volume2 className="size-3.5 shrink-0 text-accent" aria-label="Sound played" />
+                        </span>
+                        <span className="block truncate text-xs text-muted">{item.preview}</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => dismiss(item.id)}
+                        className="rounded-md p-1.5 text-muted hover:bg-soft hover:text-ink"
+                        aria-label="Dismiss notification"
+                    >
+                        <X className="size-4" />
+                    </button>
+                </div>
+            ))}
         </div>
     );
 }

@@ -11,7 +11,6 @@ import {
     Eye,
     EyeOff,
     Film,
-    Heart,
     Image as ImageIcon,
     LayoutDashboard,
     Lock,
@@ -109,7 +108,6 @@ function TelegramAlertPanel({ onCopyRules }) {
     const [updatedAt, setUpdatedAt] = useState("");
     const [unlockMessage, setUnlockMessage] = useState("User Online aaya hai 😁✳️✅");
     const [chatMessage, setChatMessage] = useState("message received 💬");
-    const [reactionMessage, setReactionMessage] = useState("message reaction received 💬 ❤️");
     const [showToken, setShowToken] = useState(false);
     const [saving, setSaving] = useState(false);
     const [testingType, setTestingType] = useState("");
@@ -132,7 +130,6 @@ function TelegramAlertPanel({ onCopyRules }) {
                 setUpdatedAt(data.updatedAt || "");
                 if (data.unlockMessage) setUnlockMessage(data.unlockMessage);
                 if (data.chatMessage) setChatMessage(data.chatMessage);
-                if (data.reactionMessage) setReactionMessage(data.reactionMessage);
             }
         } catch {
             /* ignore initial fetch error */
@@ -261,14 +258,14 @@ function TelegramAlertPanel({ onCopyRules }) {
                                 )}
                             </div>
                             <p className="mt-0.5 text-xs text-muted">
-                                PIN unlock, chat send, ya kisi message, Voice Pack, ya Video Pack par reaction ke liye Telegram alerts yahan manage karein.
+                                PIN unlock aur chat-send ke Telegram alerts yahan manage karein.
                             </p>
                         </div>
                     </div>
                 </div>
 
                 {/* Exact Message Previews */}
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-xl border border-line bg-bg p-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
                             1. PIN Unlock Alert
@@ -285,15 +282,6 @@ function TelegramAlertPanel({ onCopyRules }) {
                         <p className="mt-1 text-sm font-bold text-ink">{chatMessage}</p>
                         <p className="mt-0.5 text-[11px] text-muted">
                             Har user ki kisi bhi chat send par
-                        </p>
-                    </div>
-                    <div className="rounded-xl border border-line bg-bg p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                            3. Reaction Alert
-                        </p>
-                        <p className="mt-1 text-sm font-bold text-ink">{reactionMessage}</p>
-                        <p className="mt-0.5 text-[11px] text-muted">
-                            Message, Voice Pack, ya Video Pack reaction par
                         </p>
                     </div>
                 </div>
@@ -425,22 +413,6 @@ function TelegramAlertPanel({ onCopyRules }) {
                             )}
                         </button>
 
-                        <button
-                            type="button"
-                            onClick={() => handleSendTest("reaction")}
-                            disabled={Boolean(testingType) || saving || loadingConfig}
-                            className="btn btn-outline btn-sm h-10 px-3.5"
-                        >
-                            {testingType === "reaction" ? (
-                                <>
-                                    <Spinner className="size-4" /> Sending…
-                                </>
-                            ) : (
-                                <>
-                                    <Heart className="size-3.5" /> Test Reaction Alert
-                                </>
-                            )}
-                        </button>
                     </div>
                 </div>
             </section>
@@ -1832,7 +1804,9 @@ function AdminWorkspace({ onLock }) {
                                                 </p>
                                                 {vp.preservedFromVault ? (
                                                     <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-semibold text-danger">
-                                                        Deleted in chat · Restored
+                                                        {vp.deletedForEveryone
+                                                            ? "Deleted in chat · Restored"
+                                                            : "Vault copy"}
                                                     </span>
                                                 ) : null}
                                             </div>
@@ -1913,7 +1887,9 @@ function AdminWorkspace({ onLock }) {
                                                 </div>
                                                 {vid.preservedFromVault ? (
                                                     <span className="shrink-0 rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-semibold text-danger">
-                                                        Vault Restored
+                                                        {vid.deletedForEveryone
+                                                            ? "Vault Restored"
+                                                            : "Vault copy"}
                                                     </span>
                                                 ) : null}
                                             </div>

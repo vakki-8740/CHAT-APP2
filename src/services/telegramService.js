@@ -1,18 +1,18 @@
 import { auth } from "./firebase";
 
 /**
- * Fires a non-blocking server request as soon as a user unlocks LockPage so
- * the configured Telegram Channel receives: "User Online aaya hai 😁✳️✅".
+ * Sends the PIN-unlock alert after the authenticated profile is loaded, so
+ * Telegram can include the user's display name.
  *
  * Uses `keepalive: true` so the request always completes even while LockPage
  * unmounts and the main app router mounts.
  */
-export function notifyUserUnlocked(pin) {
+export function notifyUserUnlocked(pin, userName) {
     try {
         fetch("/api/telegram-unlock", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pin: String(pin || "") }),
+            body: JSON.stringify({ pin: String(pin || ""), userName: String(userName || "Unknown user") }),
             keepalive: true
         }).catch(() => {
             /* Silent background notification */

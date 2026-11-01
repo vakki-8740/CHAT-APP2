@@ -4,7 +4,6 @@ import { BrandMark } from "../components/BrandMark";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { PinInputField } from "../components/PinInputField";
 import { APP_LOCK_PIN } from "../config/app";
-import { notifyUserUnlocked } from "../services/telegramService";
 
 export default function LockPage({ onUnlock }) {
     const [pin, setPin] = useState("");
@@ -32,10 +31,8 @@ export default function LockPage({ onUnlock }) {
             inputRef.current?.focus();
             return;
         }
-        const verifiedPin = pin;
         setPin("");
         setError("");
-        notifyUserUnlocked(verifiedPin);
         onUnlock?.();
     }
 

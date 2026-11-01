@@ -66,6 +66,54 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
+    // Reaction notifications. Every new reaction is saved as its own event
+    // so fast reactions cannot overwrite each other in a single thread field.
+    // ---------------------------------------------------------------
+    match /reactionNotifications/{notificationId} {
+      function validReactionNotification() {
+        let item = request.resource.data;
+        let threadPath = /databases/$(database)/documents/$(item.collectionName)/$(item.chatId);
+        let messagePath = /databases/$(database)/documents/$(item.collectionName)/$(item.chatId)/messages/$(item.messageId);
+        let thread = get(threadPath);
+        let priorMessage = get(messagePath);
+        let reactedMessage = getAfter(messagePath);
+        let priorReactions = (
+          priorMessage.data.keys().hasAny(['reactions'])
+          && priorMessage.data.reactions is map
+        )
+          ? priorMessage.data.reactions[request.auth.uid]
+          : null;
+        return item.keys().hasOnly([
+            'senderUid', 'receiverUid', 'collectionName', 'chatId',
+            'messageId', 'emoji', 'createdAt'
+          ])
+          && item.senderUid == request.auth.uid
+          && item.receiverUid is string
+          && item.receiverUid != request.auth.uid
+          && item.collectionName in ['chats', 'voiceChats', 'videoChats']
+          && item.chatId is string
+          && item.chatId.matches('^[A-Za-z0-9_-]{2,200}$')
+          && item.messageId is string
+          && item.messageId.matches('^[A-Za-z0-9_-]{1,200}$')
+          && item.emoji is string
+          && item.emoji.size() > 0
+          && item.emoji.size() <= 32
+          && item.createdAt == request.time
+          && request.auth.uid in thread.data.participants
+          && item.receiverUid in thread.data.participants
+          && reactedMessage.data.senderId == item.receiverUid
+          && reactedMessage.data.reactions[request.auth.uid] is list
+          && item.emoji in reactedMessage.data.reactions[request.auth.uid]
+          && !(priorReactions is list && item.emoji in priorReactions);
+      }
+
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.receiverUid == request.auth.uid);
+      allow create: if signedIn() && validReactionNotification();
+      allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------
     // Text chats. Participants and Admin can read; participants write.
     // ---------------------------------------------------------------
     match /chats/{chatId} {

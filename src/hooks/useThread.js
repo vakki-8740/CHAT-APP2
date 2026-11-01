@@ -11,6 +11,16 @@ export function useThread(service, uid, otherUid, options = {}) {
     const [attempt, setAttempt] = useState(0);
 
     const retry = useCallback(() => setAttempt((value) => value + 1), []);
+    const updateMessage = useCallback((messageId, updater) => {
+        setMessages((current) =>
+            current.map((message) => {
+                if (message.id !== messageId) return message;
+                return typeof updater === "function"
+                    ? updater(message)
+                    : { ...message, ...updater };
+            })
+        );
+    }, []);
 
     useEffect(() => {
         if (!uid || !otherUid) {
@@ -67,5 +77,5 @@ export function useThread(service, uid, otherUid, options = {}) {
         };
     }, [service, uid, otherUid, attempt, messageDate, messageLimit]);
 
-    return { chat, messages, loading, error, retry };
+    return { chat, messages, loading, error, retry, updateMessage };
 }

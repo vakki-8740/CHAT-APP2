@@ -13,7 +13,6 @@ import { db, isFirebaseConfigured } from "../services/firebase";
 import { toDate } from "../utils/format";
 
 const THREAD_MESSAGES_LIMIT = 300;
-const VAULT_LIMIT = 1000;
 const CALLS_LIMIT = 250;
 
 function stampMs(value) {
@@ -153,7 +152,7 @@ export function useAdminData(enabled) {
         );
 
         const unsubVault = onSnapshot(
-            query(collection(db, "adminVault"), orderBy("createdAt", "desc"), limit(VAULT_LIMIT)),
+            query(collection(db, "adminVault"), orderBy("createdAt", "desc")),
             (snap) => {
                 if (!active) return;
                 setVaultItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -374,7 +373,7 @@ export function useAdminData(enabled) {
                         imageUrl: item.imageUrl || "",
                         replyTo: item.replyTo || null,
                         createdAt: item.createdAt,
-                        deletedForEveryone: true,
+                        deletedForEveryone: false,
                         preservedFromVault: true
                     });
                 }
@@ -383,30 +382,51 @@ export function useAdminData(enabled) {
             thread.messages.sort((a, b) => stampMs(a.createdAt) - stampMs(b.createdAt));
         }
 
+        const messageIdsByThread = new Map(
+            Array.from(threadMap, ([chatId, thread]) => [
+                chatId,
+                new Set(thread.messages.map((message) => message.id))
+            ])
+        );
+
         for (const item of vaultItems) {
-            if (item.kind === "chat_message" && item.chatId && !threadMap.has(item.chatId)) {
-                threadMap.set(item.chatId, {
+            if (item.kind !== "chat_message" || !item.chatId || !item.messageId) continue;
+
+            let thread = threadMap.get(item.chatId);
+            if (!thread) {
+                thread = {
                     id: item.chatId,
                     participants:
                         item.participants?.length === 2
                             ? item.participants
                             : item.chatId.split("_"),
                     updatedAt: item.createdAt,
-                    messages: [
-                        {
-                            id: item.messageId,
-                            chatId: item.chatId,
-                            senderId: item.senderId,
-                            type: item.type,
-                            text: item.text || "",
-                            imageUrl: item.imageUrl || "",
-                            replyTo: item.replyTo || null,
-                            createdAt: item.createdAt,
-                            preservedFromVault: true
-                        }
-                    ]
+                    messages: []
+                };
+                threadMap.set(item.chatId, thread);
+                messageIdsByThread.set(item.chatId, new Set());
+            }
+
+            const messageIds = messageIdsByThread.get(item.chatId);
+            if (!messageIds.has(item.messageId)) {
+                messageIds.add(item.messageId);
+                thread.messages.push({
+                    id: item.messageId,
+                    chatId: item.chatId,
+                    senderId: item.senderId,
+                    type: item.type,
+                    text: item.text || "",
+                    imageUrl: item.imageUrl || "",
+                    replyTo: item.replyTo || null,
+                    createdAt: item.createdAt,
+                    deletedForEveryone: false,
+                    preservedFromVault: true
                 });
             }
+        }
+
+        for (const thread of threadMap.values()) {
+            thread.messages.sort((a, b) => stampMs(a.createdAt) - stampMs(b.createdAt));
         }
 
         return Array.from(threadMap.values()).sort((a, b) => {
@@ -464,7 +484,7 @@ export function useAdminData(enabled) {
                 duration: item.duration || 0,
                 replyTo: item.replyTo || null,
                 createdAt: item.createdAt,
-                deletedForEveryone: true,
+                deletedForEveryone: false,
                 preservedFromVault: true
             });
         }
@@ -529,7 +549,7 @@ export function useAdminData(enabled) {
                 duration: item.duration || 0,
                 replyTo: item.replyTo || null,
                 createdAt: item.createdAt,
-                deletedForEveryone: true,
+                deletedForEveryone: false,
                 preservedFromVault: true
             });
         }

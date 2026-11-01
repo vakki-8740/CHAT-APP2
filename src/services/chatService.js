@@ -20,7 +20,7 @@ import {
 import { db, isFirebaseConfigured } from "./firebase";
 import { AppError, toAppError } from "./errors";
 import { adminVaultService } from "./adminVaultService";
-import { notifyChatSent, notifyReactionAdded } from "./telegramService";
+import { notifyChatSent } from "./telegramService";
 import { limits } from "../config/app";
 import { toggleUserReaction } from "../utils/emoji";
 import { dateFromKey, localDateKey, toDate } from "../utils/format";
@@ -298,24 +298,7 @@ export function createThreadService(collectionName) {
             }
 
             try {
-                const batch = writeBatch(db);
-                batch.set(messageRef(chatId, id), messageDoc);
-                batch.update(chatRef(uid, otherUid), {
-                    lastMessage: {
-                        id,
-                        type,
-                        text: preview,
-                        senderId: uid,
-                        createdAt: serverTimestamp(),
-                        edited: false,
-                        deletedForEveryone: false
-                    },
-                    updatedAt: serverTimestamp(),
-                    [`unread.${otherUid}`]: increment(1)
-                });
-                await batch.commit();
-                notifyChatSent({ type, collectionName });
-                adminVaultService.recordMessage({
+                const archiveRecord = adminVaultService.prepareMessageRecord({
                     actorUid: uid,
                     collectionName,
                     chatId,
@@ -334,6 +317,24 @@ export function createThreadService(collectionName) {
                     duration: Number(duration) || 0,
                     replyTo: normalizedReply
                 });
+                const batch = writeBatch(db);
+                batch.set(messageRef(chatId, id), messageDoc);
+                batch.set(archiveRecord.ref, archiveRecord.data);
+                batch.update(chatRef(uid, otherUid), {
+                    lastMessage: {
+                        id,
+                        type,
+                        text: preview,
+                        senderId: uid,
+                        createdAt: serverTimestamp(),
+                        edited: false,
+                        deletedForEveryone: false
+                    },
+                    updatedAt: serverTimestamp(),
+                    [`unread.${otherUid}`]: increment(1)
+                });
+                await batch.commit();
+                notifyChatSent({ type, collectionName });
                 return id;
             } catch (error) {
                 throw toAppError(error, "Could not send the message.");
@@ -545,9 +546,6 @@ export function createThreadService(collectionName) {
                     return { added: toggled.added, reactions: toggled.reactions };
                 });
 
-                if (result.added) {
-                    notifyReactionAdded({ emoji: cleanEmoji, collectionName });
-                }
                 return result;
             } catch (error) {
                 if (error instanceof AppError) throw error;

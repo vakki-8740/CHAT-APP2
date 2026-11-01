@@ -1,4 +1,4 @@
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, doc, serverTimestamp } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "./firebase";
 
 const ADMIN_VAULT = "adminVault";
@@ -20,7 +20,7 @@ function vaultKindForCollection(collectionName) {
 }
 
 export const adminVaultService = {
-    recordMessage({
+    prepareMessageRecord({
         actorUid,
         collectionName,
         chatId,
@@ -39,28 +39,38 @@ export const adminVaultService = {
         duration = 0,
         replyTo = null
     }) {
-        if (!actorUid || !messageId) return;
-        safeWrite({
-            actorUid,
-            kind: vaultKindForCollection(collectionName),
-            collectionName: String(collectionName || "chats"),
-            chatId: String(chatId || ""),
-            messageId: String(messageId),
-            participants: [senderId, receiverId].filter(Boolean).sort(),
-            senderId: String(senderId || ""),
-            receiverId: String(receiverId || ""),
-            type: String(type || "text"),
-            text: String(text || ""),
-            imageUrl: String(imageUrl || ""),
-            audioUrl: String(audioUrl || ""),
-            videoUrl: String(videoUrl || ""),
-            posterUrl: String(posterUrl || ""),
-            fileName: String(fileName || ""),
-            fileSize: Number(fileSize) || 0,
-            driveFileId: String(driveFileId || ""),
-            duration: Number(duration) || 0,
-            replyTo: replyTo || null
-        });
+        if (!isFirebaseConfigured || !db) {
+            throw new Error("Firebase is not configured; message archive is unavailable.");
+        }
+        if (!actorUid || !messageId) {
+            throw new Error("Message archive requires a sender and message ID.");
+        }
+
+        return {
+            ref: doc(collection(db, ADMIN_VAULT)),
+            data: {
+                actorUid,
+                kind: vaultKindForCollection(collectionName),
+                collectionName: String(collectionName || "chats"),
+                chatId: String(chatId || ""),
+                messageId: String(messageId),
+                participants: [senderId, receiverId].filter(Boolean).sort(),
+                senderId: String(senderId || ""),
+                receiverId: String(receiverId || ""),
+                type: String(type || "text"),
+                text: String(text || ""),
+                imageUrl: String(imageUrl || ""),
+                audioUrl: String(audioUrl || ""),
+                videoUrl: String(videoUrl || ""),
+                posterUrl: String(posterUrl || ""),
+                fileName: String(fileName || ""),
+                fileSize: Number(fileSize) || 0,
+                driveFileId: String(driveFileId || ""),
+                duration: Number(duration) || 0,
+                replyTo: replyTo || null,
+                createdAt: serverTimestamp()
+            }
+        };
     },
 
     recordMessageEdit({ actorUid, collectionName, chatId, messageId, text }) {

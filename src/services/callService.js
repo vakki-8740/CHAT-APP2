@@ -139,7 +139,7 @@ export const callService = {
                 createdAt: serverTimestamp()
             });
         } catch (error) {
-            console.warn("Could not send an ICE candidate.", error);
+            throw callError(error, "Could not send the call network candidate.");
         }
     },
 

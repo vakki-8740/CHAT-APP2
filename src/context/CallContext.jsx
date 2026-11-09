@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 import { callService } from "../services/callService";
-import { iceServers } from "../config/call";
+import { getCallIceConfiguration } from "../services/turnService";
 import { toDate } from "../utils/format";
 
 const CallContext = createContext(null);
@@ -27,6 +27,17 @@ const STATUS_MESSAGES = {
     busy: "The other person is on another call."
 };
 
+const VIDEO_MAX_BITRATE = 500_000;
+
+function videoConstraints(facingMode = "user") {
+    return {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 640, max: 640 },
+        height: { ideal: 480, max: 480 },
+        frameRate: { ideal: 20, max: 24 }
+    };
+}
+
 function mediaConstraints(type) {
     return {
         audio: {
@@ -34,11 +45,33 @@ function mediaConstraints(type) {
             noiseSuppression: true,
             autoGainControl: true
         },
-        video:
-            type === "video"
-                ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
-                : false
+        video: type === "video" ? videoConstraints() : false
     };
+}
+
+async function limitVideoSender(sender) {
+    try {
+        const parameters = sender.getParameters();
+        if (!parameters.encodings?.length) return;
+        parameters.encodings[0].maxBitrate = VIDEO_MAX_BITRATE;
+        parameters.encodings[0].maxFramerate = 24;
+        await sender.setParameters(parameters);
+    } catch (error) {
+        // Older browsers may not support sender bitrate controls; keep the
+        // lower capture resolution even when this optional limit is unavailable.
+        console.warn("Could not apply the low-data video bitrate limit.", error);
+    }
+}
+
+function connectionFailureMessage(session) {
+    if (session.candidateIssue) {
+        return "Call setup could not exchange network candidates. Check the Firestore rules for call candidate documents.";
+    }
+    if (!session.turnConfigured) {
+        const providerNote = session.turnWarning ? ` ${session.turnWarning}` : "";
+        return `Could not connect across these networks. A TURN relay was unavailable. Set the server-side TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, and TWILIO_API_KEY_SECRET in Vercel.${providerNote}`;
+    }
+    return "The call could not establish a media connection. Check the TURN service and network firewall.";
 }
 
 function mediaErrorMessage(error) {
@@ -78,6 +111,18 @@ export function CallProvider({ children }) {
         incomingTimerRef.current = null;
         incomingRef.current = null;
         setIncomingCall(null);
+    }
+
+    function reportCandidateIssue(session, error) {
+        if (session.closed) return;
+        session.candidateIssue = true;
+        console.warn("Call network candidate signaling failed.", error);
+        if (session.candidateIssueToastShown) return;
+        session.candidateIssueToastShown = true;
+        toast.error(
+            error?.message ||
+                "Could not exchange call network candidates. Check the Firestore call rules."
+        );
     }
 
     function disposeSession(session, { updateState = true } = {}) {
@@ -151,7 +196,14 @@ export function CallProvider({ children }) {
             }
             callService
                 .addCandidate(session.callId, session.role, candidate)
-                .catch(() => {});
+                .catch((error) => reportCandidateIssue(session, error));
+        };
+        pc.onicecandidateerror = (event) => {
+            console.warn("WebRTC ICE server error.", {
+                code: event.errorCode,
+                text: event.errorText,
+                url: event.url
+            });
         };
 
         pc.ontrack = (event) => {
@@ -179,7 +231,9 @@ export function CallProvider({ children }) {
                 patchActive(session, { status: "reconnecting" });
             } else if (pc.connectionState === "failed") {
                 session.status = "failed";
-                toast.error("The call connection failed.");
+                if (!session.candidateIssueToastShown) {
+                    toast.error(connectionFailureMessage(session));
+                }
                 disposeSession(session);
                 callService
                     .finishCall(session.callId, "failed", uid)
@@ -187,14 +241,20 @@ export function CallProvider({ children }) {
             }
         };
 
-        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+        const senderSettings = localStream.getTracks().map((track) => {
+            const sender = pc.addTrack(track, localStream);
+            return track.kind === "video" ? limitVideoSender(sender) : Promise.resolve();
+        });
+        session.mediaSettingsPromise = Promise.all(senderSettings);
     }
 
     function startConnectTimer(session) {
         window.clearTimeout(session.connectTimer);
         session.connectTimer = window.setTimeout(() => {
             if (session.closed || session.status === "connected") return;
-            toast.error("The call took too long to connect.");
+            if (!session.candidateIssueToastShown) {
+                toast.error(connectionFailureMessage(session));
+            }
             disposeSession(session);
             callService.finishCall(session.callId, "failed", uid).catch(() => {});
         }, CONNECT_TIMEOUT_MS);
@@ -253,10 +313,12 @@ export function CallProvider({ children }) {
 
         startingRef.current = true;
         let localStream;
+        let iceConfiguration;
         try {
             localStream = await navigator.mediaDevices.getUserMedia(
                 mediaConstraints(type)
             );
+            iceConfiguration = await getCallIceConfiguration();
         } catch (error) {
             startingRef.current = false;
             toast.error(mediaErrorMessage(error));
@@ -273,10 +335,12 @@ export function CallProvider({ children }) {
             return false;
         }
 
-        const pc = new RTCPeerConnection({ iceServers });
+        const pc = new RTCPeerConnection({ iceServers: iceConfiguration.iceServers });
         const session = {
             callId,
             role: "caller",
+            turnConfigured: iceConfiguration.turnConfigured,
+            turnWarning: iceConfiguration.warning,
             type,
             peer: {
                 uid: peer.uid,
@@ -316,6 +380,7 @@ export function CallProvider({ children }) {
 
         try {
             attachPeer(session);
+            await session.mediaSettingsPromise;
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             await callService.createCall({
@@ -332,7 +397,9 @@ export function CallProvider({ children }) {
             });
             session.signalingReady = true;
             for (const candidate of session.localCandidates) {
-                callService.addCandidate(callId, "caller", candidate).catch(() => {});
+                callService
+                    .addCandidate(callId, "caller", candidate)
+                    .catch((error) => reportCandidateIssue(session, error));
             }
             session.localCandidates = [];
         } catch (error) {
@@ -357,7 +424,7 @@ export function CallProvider({ children }) {
             callId,
             "callee",
             (candidates) => handleCandidates(session, candidates),
-            () => {}
+            (error) => reportCandidateIssue(session, error)
         );
 
         session.ringTimer = window.setTimeout(() => {
@@ -382,10 +449,12 @@ export function CallProvider({ children }) {
         acceptingRef.current = true;
         setAcceptingCall(true);
         let localStream;
+        let iceConfiguration;
         try {
             localStream = await navigator.mediaDevices.getUserMedia(
                 mediaConstraints(target.type)
             );
+            iceConfiguration = await getCallIceConfiguration();
         } catch (error) {
             toast.error(mediaErrorMessage(error));
             await declineCall(target, "declined", { silent: true });
@@ -394,10 +463,12 @@ export function CallProvider({ children }) {
             return false;
         }
 
-        const pc = new RTCPeerConnection({ iceServers });
+        const pc = new RTCPeerConnection({ iceServers: iceConfiguration.iceServers });
         const session = {
             callId: target.id,
             role: "callee",
+            turnConfigured: iceConfiguration.turnConfigured,
+            turnWarning: iceConfiguration.warning,
             type: target.type,
             peer: {
                 uid: target.callerId,
@@ -438,6 +509,7 @@ export function CallProvider({ children }) {
 
         try {
             attachPeer(session);
+            await session.mediaSettingsPromise;
             await pc.setRemoteDescription(new RTCSessionDescription(target.offer));
             await flushCandidates(session);
 
@@ -445,7 +517,7 @@ export function CallProvider({ children }) {
                 target.id,
                 "caller",
                 (candidates) => handleCandidates(session, candidates),
-                () => {}
+                (error) => reportCandidateIssue(session, error)
             );
 
             const answer = await pc.createAnswer();
@@ -533,7 +605,7 @@ export function CallProvider({ children }) {
         try {
             const nextStream = await navigator.mediaDevices.getUserMedia({
                 audio: false,
-                video: { facingMode: { ideal: nextFacing } }
+                video: videoConstraints(nextFacing)
             });
             const nextTrack = nextStream.getVideoTracks()[0];
             if (!nextTrack) return;

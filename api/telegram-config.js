@@ -6,7 +6,7 @@ import {
 } from "./_lib/videoBackend.js";
 import {
     CHAT_TELEGRAM_TEXT,
-    UNLOCK_TELEGRAM_TEXT,
+    formatUnlockTelegramText,
     normalizeBotToken,
     normalizeChatId,
     readTelegramConfig,
@@ -47,7 +47,7 @@ export default async function handler(request) {
             chatId: current.chatId,
             botUsername,
             updatedAt: current.updatedAt,
-            unlockMessage: UNLOCK_TELEGRAM_TEXT,
+            unlockMessage: formatUnlockTelegramText("[User name]"),
             chatMessage: CHAT_TELEGRAM_TEXT
         });
     }
@@ -62,7 +62,9 @@ export default async function handler(request) {
     const action = String(body?.action || "save").trim().toLowerCase();
     const testType = String(body?.testType || "unlock").trim().toLowerCase();
     const selectedTestText =
-        testType === "chat" ? CHAT_TELEGRAM_TEXT : UNLOCK_TELEGRAM_TEXT;
+        testType === "chat"
+            ? CHAT_TELEGRAM_TEXT
+            : formatUnlockTelegramText("Test User");
     const rawToken = String(body?.botToken || "").trim();
     const rawChatId = String(body?.chatId || "").trim();
 
@@ -143,7 +145,7 @@ export default async function handler(request) {
             chatId: chatCheck.value,
             botUsername: botInfo.username || "",
             updatedAt: saved.updatedAt,
-            unlockMessage: UNLOCK_TELEGRAM_TEXT,
+            unlockMessage: formatUnlockTelegramText("[User name]"),
             chatMessage: CHAT_TELEGRAM_TEXT
         });
     } catch (error) {

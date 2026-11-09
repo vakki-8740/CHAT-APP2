@@ -83,6 +83,46 @@ Rules in this repo:
   size/MIME limits, chat files only readable by the two participants encoded in
   the chat id.
 
+## Voice/video calling and secure TURN setup
+
+Calls use WebRTC. STUN servers are public connection-discovery services, but
+some cellular/Wi-Fi NAT combinations need a TURN relay. This app obtains
+short-lived relay credentials from its server endpoint; provider master secrets
+must never use a `VITE_` prefix or be sent to the browser.
+
+The integrated provider is Twilio Network Traversal Service:
+
+1. Create/sign in to a Twilio account at <https://www.twilio.com/>.
+2. In Twilio Console, open **Account → API keys & tokens** and create a
+   **Standard API Key**. Save its SID and secret when shown. Also copy the
+   Account SID from the Console account dashboard. Do not use or share the
+   account Auth Token for this setup.
+3. In Vercel, open the **`yutube-learning-2`** project → **Settings → Environment
+   Variables**. Add these as server-side variables (exact names, no `VITE_`):
+
+   ```env
+   TWILIO_ACCOUNT_SID=AC...
+   TWILIO_API_KEY_SID=SK...
+   TWILIO_API_KEY_SECRET=...
+   ```
+
+   Select **Production** and **Preview** for each variable. Never put these
+   values in a client-side `.env` variable or commit them to Git.
+4. Redeploy the user app for each environment. During a call, an authenticated
+   user makes a same-origin request to `/api/turn-credentials`. The server
+   authenticates the Firebase ID token, calls Twilio's Tokens API with a
+   one-hour TTL, and returns only the temporary ICE server list needed by
+   `RTCPeerConnection`. The Twilio API key secret stays on Vercel.
+5. Test a call between mobile data and Wi-Fi. If TURN credentials cannot be
+   issued, same-network/direct calls may still work, but some mixed-network
+   calls will fail. TURN relays media, so provider bandwidth limits or charges
+   may apply. Use Twilio's usage controls and rotate/revoke the API key if it
+   is exposed.
+
+TURN username/password values returned to the browser are visible to that
+signed-in user by design because WebRTC needs them. They are temporary; the
+long-lived Twilio API key secret is not exposed.
+
 ## 5. Storage adapter (optional HTTP uploader)
 
 Binary files are **never** written to Firestore; only URLs + metadata are

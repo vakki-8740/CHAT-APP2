@@ -496,13 +496,12 @@ export function createThreadService(collectionName) {
 
             const chatId = makeChatId(uid, otherUid);
             const targetMessageRef = messageRef(chatId, messageId);
-            const threadRef = chatRef(uid, otherUid);
+            const notificationRef = doc(collection(db, "reactionNotifications"));
 
             try {
                 const result = await runTransaction(db, async (transaction) => {
                     const messageSnap = await transaction.get(targetMessageRef);
-                    const threadSnap = await transaction.get(threadRef);
-                    if (!messageSnap.exists() || !threadSnap.exists()) {
+                    if (!messageSnap.exists()) {
                         throw new AppError("not-found/message", "This message is no longer available.");
                     }
                     const message = messageSnap.data();
@@ -522,25 +521,17 @@ export function createThreadService(collectionName) {
                         reactions: toggled.reactionMap
                     });
 
-                    if (toggled.added) {
-                        const senderId = String(message.senderId || "");
-                        if (senderId && senderId !== uid) {
-                            const noticeId = doc(
-                                collection(db, collectionName, chatId, "messages")
-                            ).id;
-                            const notification = {
-                                id: noticeId,
-                                senderId: uid,
-                                receiverId: senderId,
-                                messageId,
-                                emoji: cleanEmoji,
-                                createdAt: serverTimestamp()
-                            };
-                            transaction.update(threadRef, {
-                                lastReaction: notification,
-                                updatedAt: serverTimestamp()
-                            });
-                        }
+                    const receiverUid = String(message.senderId || "");
+                    if (toggled.added && receiverUid && receiverUid !== uid) {
+                        transaction.set(notificationRef, {
+                            senderUid: uid,
+                            receiverUid,
+                            collectionName,
+                            chatId,
+                            messageId,
+                            emoji: cleanEmoji,
+                            createdAt: serverTimestamp()
+                        });
                     }
 
                     return { added: toggled.added, reactions: toggled.reactions };

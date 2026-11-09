@@ -22,6 +22,7 @@ import { toDate } from "../utils/format";
 import { getAudioDuration } from "../utils/files";
 import { limits } from "../config/app";
 import { cn } from "../utils/cn";
+import { toggleUserReaction } from "../utils/emoji";
 
 export default function VoiceChatPage() {
     const { uid: peerUid } = useParams();
@@ -31,7 +32,7 @@ export default function VoiceChatPage() {
 
     const [peer, setPeer] = useState(null);
     const [peerError, setPeerError] = useState("");
-    const { chat, messages, loading, error, retry } = useThread(voiceService, uid, peerUid);
+    const { chat, messages, loading, error, retry, updateMessage } = useThread(voiceService, uid, peerUid);
 
     const [replyTo, setReplyTo] = useState(null);
     const [menuMessage, setMenuMessage] = useState(null);
@@ -44,6 +45,7 @@ export default function VoiceChatPage() {
     const fileRef = useRef(null);
     const bottomRef = useRef(null);
     const previousCount = useRef(0);
+    const reactionSequenceRef = useRef(new Map());
 
     const hasChat = Boolean(chat);
     const latestMessageId = chat?.lastMessage?.id || "";
@@ -231,6 +233,32 @@ export default function VoiceChatPage() {
     }
 
     async function handleReact(message, emoji) {
+        const previousReactions = message.reactions || {};
+        const previousOwnReactions = previousReactions[uid];
+        const optimistic = toggleUserReaction(previousReactions, uid, emoji);
+        if (!optimistic.ok) {
+            toast.error("You can add up to 5 different reactions to one message.");
+            return;
+        }
+        const operationId = (reactionSequenceRef.current.get(message.id) || 0) + 1;
+        reactionSequenceRef.current.set(message.id, operationId);
+
+        const applyReactions = (reactions) => {
+            updateMessage(message.id, { reactions });
+            setMenuMessage((current) =>
+                current?.id === message.id ? { ...current, reactions } : current
+            );
+        };
+        const rollbackOwnReaction = (currentMessage) => {
+            const reactions = { ...currentMessage.reactions };
+            if (previousOwnReactions === undefined) delete reactions[uid];
+            else reactions[uid] = previousOwnReactions;
+            return { ...currentMessage, reactions };
+        };
+
+        // Update the visible bubble immediately; the transaction reconciles this
+        // optimistic state with Firestore and enforces the per-user reaction cap.
+        applyReactions(optimistic.reactionMap);
         try {
             const result = await voiceService.react({
                 uid,
@@ -238,15 +266,23 @@ export default function VoiceChatPage() {
                 messageId: message.id,
                 emoji
             });
+            if (reactionSequenceRef.current.get(message.id) !== operationId) return;
+            const reconcileOwnReaction = (currentMessage) => {
+                const reactions = { ...currentMessage.reactions };
+                if (result.reactions.length) reactions[uid] = result.reactions;
+                else delete reactions[uid];
+                return { ...currentMessage, reactions };
+            };
+            updateMessage(message.id, reconcileOwnReaction);
             setMenuMessage((current) =>
-                current?.id === message.id
-                    ? {
-                          ...current,
-                          reactions: { ...current.reactions, [uid]: result.reactions }
-                      }
-                    : current
+                current?.id === message.id ? reconcileOwnReaction(current) : current
             );
         } catch (nextError) {
+            if (reactionSequenceRef.current.get(message.id) !== operationId) return;
+            updateMessage(message.id, rollbackOwnReaction);
+            setMenuMessage((current) =>
+                current?.id === message.id ? rollbackOwnReaction(current) : current
+            );
             toast.error(nextError.message);
         }
     }

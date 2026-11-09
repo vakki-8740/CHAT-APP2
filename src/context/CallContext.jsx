@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 import { callService } from "../services/callService";
-import { iceServers, turnConfigured } from "../config/call";
+import { getCallIceConfiguration } from "../services/turnService";
 import { toDate } from "../utils/format";
 
 const CallContext = createContext(null);
@@ -67,8 +67,9 @@ function connectionFailureMessage(session) {
     if (session.candidateIssue) {
         return "Call setup could not exchange network candidates. Check the Firestore rules for call candidate documents.";
     }
-    if (!turnConfigured) {
-        return "Could not connect across these networks. A TURN relay is not configured; add the VITE_TURN_URL, VITE_TURN_USERNAME, and VITE_TURN_CREDENTIAL settings in Vercel.";
+    if (!session.turnConfigured) {
+        const providerNote = session.turnWarning ? ` ${session.turnWarning}` : "";
+        return `Could not connect across these networks. A TURN relay was unavailable. Set the server-side TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, and TWILIO_API_KEY_SECRET in Vercel.${providerNote}`;
     }
     return "The call could not establish a media connection. Check the TURN service and network firewall.";
 }
@@ -312,10 +313,12 @@ export function CallProvider({ children }) {
 
         startingRef.current = true;
         let localStream;
+        let iceConfiguration;
         try {
             localStream = await navigator.mediaDevices.getUserMedia(
                 mediaConstraints(type)
             );
+            iceConfiguration = await getCallIceConfiguration();
         } catch (error) {
             startingRef.current = false;
             toast.error(mediaErrorMessage(error));
@@ -332,10 +335,12 @@ export function CallProvider({ children }) {
             return false;
         }
 
-        const pc = new RTCPeerConnection({ iceServers });
+        const pc = new RTCPeerConnection({ iceServers: iceConfiguration.iceServers });
         const session = {
             callId,
             role: "caller",
+            turnConfigured: iceConfiguration.turnConfigured,
+            turnWarning: iceConfiguration.warning,
             type,
             peer: {
                 uid: peer.uid,
@@ -444,10 +449,12 @@ export function CallProvider({ children }) {
         acceptingRef.current = true;
         setAcceptingCall(true);
         let localStream;
+        let iceConfiguration;
         try {
             localStream = await navigator.mediaDevices.getUserMedia(
                 mediaConstraints(target.type)
             );
+            iceConfiguration = await getCallIceConfiguration();
         } catch (error) {
             toast.error(mediaErrorMessage(error));
             await declineCall(target, "declined", { silent: true });
@@ -456,10 +463,12 @@ export function CallProvider({ children }) {
             return false;
         }
 
-        const pc = new RTCPeerConnection({ iceServers });
+        const pc = new RTCPeerConnection({ iceServers: iceConfiguration.iceServers });
         const session = {
             callId: target.id,
             role: "callee",
+            turnConfigured: iceConfiguration.turnConfigured,
+            turnWarning: iceConfiguration.warning,
             type: target.type,
             peer: {
                 uid: target.callerId,

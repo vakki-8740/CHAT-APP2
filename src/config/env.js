@@ -22,11 +22,6 @@ export const env = {
             (read("VITE_FIREBASE_STORAGE_BUCKET") ? "firebase" : "firestore"),
         uploadEndpoint: read("VITE_UPLOAD_ENDPOINT"),
         uploadToken: read("VITE_UPLOAD_TOKEN")
-    },
-    call: {
-        turnUrls: read("VITE_TURN_URL"),
-        turnUsername: read("VITE_TURN_USERNAME"),
-        turnCredential: read("VITE_TURN_CREDENTIAL")
     }
 };
 

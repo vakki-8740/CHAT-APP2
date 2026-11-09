@@ -75,6 +75,14 @@ service cloud.firestore {
       function validLastReaction() {
         let notice = request.resource.data.lastReaction;
         let reactedMessage = getAfter(/databases/$(database)/documents/chats/$(chatId)/messages/$(notice.messageId));
+        // Same guard as validOwnReactionUpdate: the reacted message may
+        // predate the reactions map, and the reacting user may not be in it.
+        let reactedReactions = reactedMessage.data.keys().hasAny(['reactions'])
+          ? reactedMessage.data.reactions
+          : {};
+        let ownReactions = reactedReactions.keys().hasAny([request.auth.uid])
+          ? reactedReactions[request.auth.uid]
+          : [];
         return notice is map
           && notice.keys().hasOnly(['id', 'senderId', 'receiverId', 'messageId', 'emoji', 'createdAt'])
           && notice.id is string
@@ -84,9 +92,9 @@ service cloud.firestore {
           && notice.messageId is string
           && notice.emoji is string
           && notice.emoji.size() <= 32
-          && reactedMessage.data.reactions[request.auth.uid] is list
-          && reactedMessage.data.reactions[request.auth.uid].size() <= 5
-          && notice.emoji in reactedMessage.data.reactions[request.auth.uid]
+          && ownReactions is list
+          && ownReactions.size() <= 5
+          && notice.emoji in ownReactions
           && notice.createdAt == request.time;
       }
 
@@ -116,8 +124,19 @@ service cloud.firestore {
         }
 
         function validOwnReactionUpdate() {
-          let changedReactionUsers = request.resource.data.reactions.diff(resource.data.reactions).affectedKeys();
-          let updatedReactions = request.resource.data.reactions;
+          // Messages written before the reactions map existed carry no
+          // `reactions` field. Reading a missing property is an evaluation
+          // error in the rules language - surfaced to the client as
+          // permission-denied - so both sides are resolved through a key
+          // check first. Documents that do have the field behave exactly
+          // as before.
+          let previousReactions = resource.data.keys().hasAny(['reactions'])
+            ? resource.data.reactions
+            : {};
+          let updatedReactions = request.resource.data.keys().hasAny(['reactions'])
+            ? request.resource.data.reactions
+            : {};
+          let changedReactionUsers = updatedReactions.diff(previousReactions).affectedKeys();
           return changedReactionUsers.hasOnly([request.auth.uid])
             && (
               !(request.auth.uid in changedReactionUsers)
@@ -181,6 +200,14 @@ service cloud.firestore {
       function validLastReaction() {
         let notice = request.resource.data.lastReaction;
         let reactedMessage = getAfter(/databases/$(database)/documents/voiceChats/$(chatId)/messages/$(notice.messageId));
+        // Same guard as validOwnReactionUpdate: the reacted message may
+        // predate the reactions map, and the reacting user may not be in it.
+        let reactedReactions = reactedMessage.data.keys().hasAny(['reactions'])
+          ? reactedMessage.data.reactions
+          : {};
+        let ownReactions = reactedReactions.keys().hasAny([request.auth.uid])
+          ? reactedReactions[request.auth.uid]
+          : [];
         return notice is map
           && notice.keys().hasOnly(['id', 'senderId', 'receiverId', 'messageId', 'emoji', 'createdAt'])
           && notice.id is string
@@ -190,9 +217,9 @@ service cloud.firestore {
           && notice.messageId is string
           && notice.emoji is string
           && notice.emoji.size() <= 32
-          && reactedMessage.data.reactions[request.auth.uid] is list
-          && reactedMessage.data.reactions[request.auth.uid].size() <= 5
-          && notice.emoji in reactedMessage.data.reactions[request.auth.uid]
+          && ownReactions is list
+          && ownReactions.size() <= 5
+          && notice.emoji in ownReactions
           && notice.createdAt == request.time;
       }
 
@@ -222,8 +249,19 @@ service cloud.firestore {
         }
 
         function validOwnReactionUpdate() {
-          let changedReactionUsers = request.resource.data.reactions.diff(resource.data.reactions).affectedKeys();
-          let updatedReactions = request.resource.data.reactions;
+          // Messages written before the reactions map existed carry no
+          // `reactions` field. Reading a missing property is an evaluation
+          // error in the rules language - surfaced to the client as
+          // permission-denied - so both sides are resolved through a key
+          // check first. Documents that do have the field behave exactly
+          // as before.
+          let previousReactions = resource.data.keys().hasAny(['reactions'])
+            ? resource.data.reactions
+            : {};
+          let updatedReactions = request.resource.data.keys().hasAny(['reactions'])
+            ? request.resource.data.reactions
+            : {};
+          let changedReactionUsers = updatedReactions.diff(previousReactions).affectedKeys();
           return changedReactionUsers.hasOnly([request.auth.uid])
             && (
               !(request.auth.uid in changedReactionUsers)
@@ -287,6 +325,14 @@ service cloud.firestore {
       function validLastReaction() {
         let notice = request.resource.data.lastReaction;
         let reactedMessage = getAfter(/databases/$(database)/documents/videoChats/$(chatId)/messages/$(notice.messageId));
+        // Same guard as validOwnReactionUpdate: the reacted message may
+        // predate the reactions map, and the reacting user may not be in it.
+        let reactedReactions = reactedMessage.data.keys().hasAny(['reactions'])
+          ? reactedMessage.data.reactions
+          : {};
+        let ownReactions = reactedReactions.keys().hasAny([request.auth.uid])
+          ? reactedReactions[request.auth.uid]
+          : [];
         return notice is map
           && notice.keys().hasOnly(['id', 'senderId', 'receiverId', 'messageId', 'emoji', 'createdAt'])
           && notice.id is string
@@ -296,9 +342,9 @@ service cloud.firestore {
           && notice.messageId is string
           && notice.emoji is string
           && notice.emoji.size() <= 32
-          && reactedMessage.data.reactions[request.auth.uid] is list
-          && reactedMessage.data.reactions[request.auth.uid].size() <= 5
-          && notice.emoji in reactedMessage.data.reactions[request.auth.uid]
+          && ownReactions is list
+          && ownReactions.size() <= 5
+          && notice.emoji in ownReactions
           && notice.createdAt == request.time;
       }
 
@@ -328,8 +374,19 @@ service cloud.firestore {
         }
 
         function validOwnReactionUpdate() {
-          let changedReactionUsers = request.resource.data.reactions.diff(resource.data.reactions).affectedKeys();
-          let updatedReactions = request.resource.data.reactions;
+          // Messages written before the reactions map existed carry no
+          // `reactions` field. Reading a missing property is an evaluation
+          // error in the rules language - surfaced to the client as
+          // permission-denied - so both sides are resolved through a key
+          // check first. Documents that do have the field behave exactly
+          // as before.
+          let previousReactions = resource.data.keys().hasAny(['reactions'])
+            ? resource.data.reactions
+            : {};
+          let updatedReactions = request.resource.data.keys().hasAny(['reactions'])
+            ? request.resource.data.reactions
+            : {};
+          let changedReactionUsers = updatedReactions.diff(previousReactions).affectedKeys();
           return changedReactionUsers.hasOnly([request.auth.uid])
             && (
               !(request.auth.uid in changedReactionUsers)

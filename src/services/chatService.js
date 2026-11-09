@@ -54,6 +54,28 @@ export function previewForMessage(type, text) {
 }
 
 /**
+ * Publishes the `lastReaction` notice that feeds the other participant's
+ * in-app reaction toast.
+ *
+ * Deliberately best-effort. The reaction has already been committed to the
+ * message document by the time this runs, so a rejection here must never be
+ * surfaced as a failed reaction - it only means the toast is skipped. That
+ * happens when the rules deployed to the live project are older than the
+ * multi-reaction schema and still refuse the `lastReaction` field.
+ */
+async function publishReactionNotice(threadRef, notice) {
+    try {
+        await updateDoc(threadRef, {
+            lastReaction: notice,
+            updatedAt: serverTimestamp()
+        });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Every thread collection ("chats", "voiceChats") has the same shape:
  *
  *   {collection}/{chatId}:
@@ -66,7 +88,7 @@ export function previewForMessage(type, text) {
  *
  *   {collection}/{chatId}/messages/{messageId}:
  *      senderId, type, text, imageUrl, audioUrl, duration,
- *      replyTo, reactions {uid: emoji}, hiddenFor [uid],
+ *      replyTo, reactions {uid: [emoji, ...]}, hiddenFor [uid],
  *      deletedForEveryone, createdAt, editedAt
  *
  * Text chat and the Voice Pack use separate collections so their chats, unread
@@ -497,6 +519,7 @@ export function createThreadService(collectionName) {
             const chatId = makeChatId(uid, otherUid);
             const targetMessageRef = messageRef(chatId, messageId);
             const threadRef = chatRef(uid, otherUid);
+            let notice = null;
 
             try {
                 const result = await runTransaction(db, async (transaction) => {
@@ -522,29 +545,31 @@ export function createThreadService(collectionName) {
                         reactions: toggled.reactionMap
                     });
 
+                    // Only the reaction itself is committed here. The
+                    // `lastReaction` notice just drives the other person's
+                    // toast, so it is published afterwards and is allowed to
+                    // fail: a thread whose deployed rules predate the
+                    // multi-reaction schema rejects that field, and keeping it
+                    // in the transaction used to roll the reaction back too.
+                    notice = null;
                     if (toggled.added) {
                         const senderId = String(message.senderId || "");
                         if (senderId && senderId !== uid) {
-                            const noticeId = doc(
-                                collection(db, collectionName, chatId, "messages")
-                            ).id;
-                            const notification = {
-                                id: noticeId,
+                            notice = {
+                                id: doc(collection(db, collectionName, chatId, "messages")).id,
                                 senderId: uid,
                                 receiverId: senderId,
                                 messageId,
                                 emoji: cleanEmoji,
                                 createdAt: serverTimestamp()
                             };
-                            transaction.update(threadRef, {
-                                lastReaction: notification,
-                                updatedAt: serverTimestamp()
-                            });
                         }
                     }
 
                     return { added: toggled.added, reactions: toggled.reactions };
                 });
+
+                if (notice) await publishReactionNotice(threadRef, notice);
 
                 return result;
             } catch (error) {

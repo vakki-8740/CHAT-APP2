@@ -170,7 +170,7 @@ export function ChatBubble({
                     </p>
                 </div>
 
-                {reactions.length ? (
+                {reactions.length && !deleted ? (
                     <div className={cn("mt-1 flex flex-wrap gap-1", mine ? "justify-end" : "")}>
                         {reactions.map((reaction) => {
                             const isMine = reaction.uids.includes(currentUid);

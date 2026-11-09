@@ -7,14 +7,19 @@ import { UserRow } from "../components/UserRow";
 import { ListSkeleton } from "../components/LoadingScreen";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { MissedMessagesPopup } from "../components/MissedMessagesPopup";
 import { useAuth } from "../context/AuthContext";
 import { useDirectory } from "../hooks/useDirectory";
+import { useMissedMessages } from "../hooks/useMissedMessages";
 import { chatService } from "../services/chatService";
 
 export default function HomePage() {
     const { uid, profile } = useAuth();
     const { users, loading, error, reload } = useDirectory(chatService, uid);
     const [query, setQuery] = useState("");
+    // Offline Missed Messages popup. Read-only: it never marks anything as read,
+    // so the unread badges and chat behaviour below are untouched.
+    const missed = useMissedMessages();
 
     const filtered = useMemo(() => {
         const needle = query.trim().toLowerCase();
@@ -94,6 +99,13 @@ export default function HomePage() {
                     ))}
                 </div>
             )}
+
+            <MissedMessagesPopup
+                open={missed.visible}
+                groups={missed.groups}
+                counts={missed.counts}
+                onClose={missed.dismiss}
+            />
         </>
     );
 }
